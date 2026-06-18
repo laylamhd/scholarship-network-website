@@ -30,7 +30,13 @@ import {
   Clock,
   Shield,
   ExternalLink,
+  Loader2,
+  X,
 } from "lucide-react";
+import { useAuth } from "../lib/AuthContext";
+import { useProfile } from "../lib/useProfile";
+import { isSupabaseConfigured } from "../lib/supabase";
+import type { EditableProfile, ProfileWithRelations } from "../lib/types";
 
 // ─────────────────────────────────────────────
 // DATA
@@ -188,13 +194,94 @@ function Badge({ children, variant = "default" }: { children: React.ReactNode; v
 }
 
 // ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+
+function initialsFrom(name: string | null | undefined): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? parts[parts.length - 1][0] : "";
+  return (first + last).toUpperCase() || "?";
+}
+
+// Matches a portal by its id ("palestine") or its display name ("Palestine"),
+// so it works for both the signup selector and a stored country value.
+function portalByKey(key: string | null | undefined) {
+  if (!key) return undefined;
+  const lower = key.toLowerCase();
+  return PORTALS.find((p) => p.id === lower || p.name.toLowerCase() === lower);
+}
+
+function portalFlag(key: string | null | undefined): string {
+  return portalByKey(key)?.flag ?? "🌍";
+}
+
+function portalName(key: string | null | undefined): string {
+  return portalByKey(key)?.name ?? key ?? "Global";
+}
+
+// ─────────────────────────────────────────────
 // LANDING
 // ─────────────────────────────────────────────
 
-function LandingView({ onLogin }: { onLogin: () => void }) {
+function LandingView() {
+  const { signIn, signUp } = useAuth();
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [selectedPortal, setSelectedPortal] = useState("");
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    setError(null);
+    setInfo(null);
+    if (!isSupabaseConfigured) {
+      setError(
+        "Supabase isn't connected yet. Add your project keys to .env.local and restart the dev server.",
+      );
+      return;
+    }
+    if (!email || !password) {
+      setError("Please enter your email and password.");
+      return;
+    }
+    if (mode === "signup") {
+      if (!fullName.trim()) {
+        setError("Please enter your full name.");
+        return;
+      }
+      if (!selectedPortal) {
+        setError("Please select your regional portal above.");
+        return;
+      }
+    }
+    setSubmitting(true);
+    if (mode === "signin") {
+      const res = await signIn(email, password);
+      if (res.error) setError(res.error);
+    } else {
+      const res = await signUp(email, password, {
+        fullName: fullName.trim(),
+        // Regional portal isn't a column in the schema; store the chosen
+        // region as the profile's country.
+        country: portalName(selectedPortal),
+      });
+      if (res.error) {
+        setError(res.error);
+      } else {
+        setInfo(
+          "Account created. If email confirmation is enabled, check your inbox; otherwise sign in below.",
+        );
+        setMode("signin");
+        setPassword("");
+      }
+    }
+    setSubmitting(false);
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -288,22 +375,45 @@ function LandingView({ onLogin }: { onLogin: () => void }) {
             </div>
           </div>
 
-          {/* Right — login form */}
+          {/* Right — auth form */}
           <div>
             <div className="bg-card border border-border rounded-2xl p-8 shadow-sm">
               <h2
                 style={{ fontFamily: "'Lora', serif" }}
                 className="text-xl font-semibold text-foreground mb-1"
               >
-                Sign in to your account
+                {mode === "signin" ? "Sign in to your account" : "Create your account"}
               </h2>
               <p className="text-sm text-muted-foreground mb-6">
-                {selectedPortal
-                  ? `Portal: ${PORTALS.find((p) => p.id === selectedPortal)?.name} ${PORTALS.find((p) => p.id === selectedPortal)?.flag}`
-                  : "Please select your regional portal above"}
+                {mode === "signup"
+                  ? selectedPortal
+                    ? `Portal: ${portalName(selectedPortal)} ${portalFlag(selectedPortal)}`
+                    : "Please select your regional portal above"
+                  : "Welcome back to the TBHF Scholars Network"}
               </p>
 
+              {!isSupabaseConfigured && (
+                <div className="mb-5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+                  Supabase isn't connected yet. Add your project keys to{" "}
+                  <code className="font-mono">.env.local</code> and restart the dev server.
+                </div>
+              )}
+
               <div className="space-y-4">
+                {mode === "signup" && (
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      Full name
+                    </label>
+                    <input
+                      type="text"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Layla Hassan"
+                      className="w-full px-4 py-3 rounded-lg border border-border bg-input-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-sm"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">
                     Email address
@@ -312,6 +422,7 @@ function LandingView({ onLogin }: { onLogin: () => void }) {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                     placeholder="you@example.com"
                     className="w-full px-4 py-3 rounded-lg border border-border bg-input-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-sm"
                   />
@@ -324,23 +435,60 @@ function LandingView({ onLogin }: { onLogin: () => void }) {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
                     placeholder="••••••••"
                     className="w-full px-4 py-3 rounded-lg border border-border bg-input-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-sm"
                   />
                 </div>
+
+                {error && (
+                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    {error}
+                  </p>
+                )}
+                {info && (
+                  <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                    {info}
+                  </p>
+                )}
+
                 <button
-                  onClick={onLogin}
-                  className="w-full py-3 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 active:scale-[0.99] transition-all text-sm"
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                  className="w-full py-3 bg-primary text-primary-foreground rounded-lg font-semibold hover:bg-primary/90 active:scale-[0.99] transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-60"
                 >
-                  Sign In
+                  {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {mode === "signin" ? "Sign In" : "Create Account"}
                 </button>
               </div>
 
               <div className="flex items-center justify-between mt-4 text-sm">
-                <button className="text-primary hover:underline text-sm">Forgot password?</button>
-                <button className="text-muted-foreground hover:text-foreground text-sm transition-colors">
-                  Request access →
-                </button>
+                {mode === "signin" ? (
+                  <>
+                    <button className="text-primary hover:underline text-sm">Forgot password?</button>
+                    <button
+                      onClick={() => {
+                        setMode("signup");
+                        setError(null);
+                        setInfo(null);
+                      }}
+                      className="text-muted-foreground hover:text-foreground text-sm transition-colors"
+                    >
+                      Request access →
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setMode("signin");
+                      setError(null);
+                      setInfo(null);
+                    }}
+                    className="text-primary hover:underline text-sm"
+                  >
+                    ← Back to sign in
+                  </button>
+                )}
               </div>
 
               <div className="mt-6 pt-5 border-t border-border flex items-start gap-2 text-xs text-muted-foreground">
@@ -376,6 +524,12 @@ function Shell({
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const { signOut } = useAuth();
+  const { profile } = useProfile();
+
+  const displayName = profile?.full_name || profile?.email || "Scholar";
+  const initials = initialsFrom(profile?.full_name || profile?.email);
+  const portalLabel = `${portalName(profile?.country)} ${portalFlag(profile?.country)}`;
 
   const navItems: { id: View; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: "dashboard", label: "Dashboard", icon: Home },
@@ -434,14 +588,17 @@ function Shell({
         <div className="p-3 border-t border-border">
           {!collapsed && (
             <div className="flex items-center gap-2.5 px-2 py-2 mb-1">
-              <Avatar initials="LH" size="sm" />
+              <Avatar initials={initials} size="sm" />
               <div className="overflow-hidden">
-                <div className="text-xs font-semibold text-foreground truncate">Layla Hassan</div>
-                <div className="text-xs text-muted-foreground truncate">Palestine 🇵🇸</div>
+                <div className="text-xs font-semibold text-foreground truncate">{displayName}</div>
+                <div className="text-xs text-muted-foreground truncate">{portalLabel}</div>
               </div>
             </div>
           )}
-          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+          <button
+            onClick={() => signOut()}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
             <LogOut className="w-4 h-4 flex-shrink-0" />
             {!collapsed && <span>Sign out</span>}
           </button>
@@ -475,10 +632,10 @@ function Shell({
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-accent rounded-full" />
             </button>
             <div className="flex items-center gap-2.5">
-              <Avatar initials="LH" size="sm" />
+              <Avatar initials={initials} size="sm" />
               <div className="hidden sm:block">
-                <div className="text-sm font-semibold text-foreground leading-tight">Layla Hassan</div>
-                <div className="text-xs text-muted-foreground">Palestine 🇵🇸</div>
+                <div className="text-sm font-semibold text-foreground leading-tight">{displayName}</div>
+                <div className="text-xs text-muted-foreground">{portalLabel}</div>
               </div>
             </div>
           </div>
@@ -890,21 +1047,124 @@ function CommunityView() {
 // PROFILE
 // ─────────────────────────────────────────────
 
-function ProfileView() {
-  const skills = [
-    "Water Resource Management", "GIS Mapping", "Environmental Policy",
-    "Data Analysis", "Arabic", "English", "German (B2)", "R / Python",
-    "Academic Research", "Field Surveys",
-  ];
+// ---- Profile form/display helpers ----
 
-  const academicInfo = [
-    { label: "Scholar ID", value: "PS-2847" },
-    { label: "Program", value: "MSc Environmental Engineering" },
-    { label: "University", value: "TU Berlin" },
-    { label: "Host Country", value: "Germany" },
-    { label: "Cohort Year", value: "2023" },
-    { label: "Status", value: "Active Scholar" },
-  ];
+const inputClass =
+  "w-full px-3 py-2 rounded-lg border border-border bg-input-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors text-sm";
+
+function toList(value: string): string[] {
+  return value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-foreground mb-1">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function Section({
+  title,
+  small,
+  children,
+}: {
+  title: string;
+  small?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-5">
+      <h2
+        style={{ fontFamily: "'Lora', serif" }}
+        className={`font-semibold text-foreground mb-3 ${small ? "text-sm" : ""}`}
+      >
+        {title}
+      </h2>
+      {children}
+    </div>
+  );
+}
+
+function Chips({ items }: { items: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {items.map((s) => (
+        <span
+          key={s}
+          className="text-xs px-3 py-1.5 bg-secondary text-secondary-foreground rounded-full font-medium"
+        >
+          {s}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function EmptyHint({ children }: { children: React.ReactNode }) {
+  return <p className="text-sm text-muted-foreground italic">{children}</p>;
+}
+
+function ProfileView() {
+  const { profile, loading, error, updateProfile } = useProfile();
+  const [editing, setEditing] = useState(false);
+
+  if (loading) {
+    return (
+      <div className="p-12 flex justify-center">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (error || !profile) {
+    return (
+      <div className="max-w-3xl mx-auto p-6">
+        <div className="bg-card border border-border rounded-xl p-6 text-sm text-muted-foreground">
+          We couldn't load your profile{error ? `: ${error}` : ""}. Make sure the database
+          migration has been applied, then refresh.
+        </div>
+      </div>
+    );
+  }
+
+  if (editing) {
+    return (
+      <ProfileEditor
+        profile={profile}
+        onSave={updateProfile}
+        onDone={() => setEditing(false)}
+      />
+    );
+  }
+
+  return <ProfileDisplay profile={profile} onEdit={() => setEditing(true)} />;
+}
+
+function ProfileDisplay({
+  profile,
+  onEdit,
+}: {
+  profile: ProfileWithRelations;
+  onEdit: () => void;
+}) {
+  const name = profile.full_name || "Unnamed Scholar";
+  const isPublic = profile.profile_visibility === "public";
+  const location = [profile.city, profile.country].filter(Boolean).join(", ");
+  const current = profile.academic_records.find((r) => r.is_current) ?? profile.academic_records[0];
+
+  const personalInfo = [
+    { label: "Nationality", value: profile.nationality },
+    { label: "Country", value: profile.country },
+    { label: "City", value: profile.city },
+    { label: "Gender", value: profile.gender },
+    { label: "Phone", value: profile.phone },
+    { label: "Status", value: profile.role === "alumni" ? "Alumni" : "Active Scholar" },
+  ].filter((i) => i.value);
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
@@ -913,36 +1173,62 @@ function ProfileView() {
         <div className="h-28 bg-gradient-to-r from-primary to-primary/60" />
         <div className="px-6 pb-6">
           <div className="flex items-end justify-between -mt-9 mb-4">
-            <div className="w-20 h-20 rounded-full bg-primary/10 border-4 border-white flex items-center justify-center text-xl font-semibold text-primary flex-shrink-0" style={{ fontFamily: "'Lora', serif" }}>
-              LH
+            <div
+              className="w-20 h-20 rounded-full bg-primary/10 border-4 border-white flex items-center justify-center text-xl font-semibold text-primary flex-shrink-0 overflow-hidden"
+              style={{ fontFamily: "'Lora', serif" }}
+            >
+              {profile.avatar_url ? (
+                <img src={profile.avatar_url} alt={name} className="w-full h-full object-cover" />
+              ) : (
+                initialsFrom(name)
+              )}
             </div>
             <div className="flex gap-2 pb-1">
-              <button className="text-xs border border-border px-3 py-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5" /> Message
-              </button>
-              <button className="text-xs bg-primary text-primary-foreground px-3 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium">
+              <button
+                onClick={onEdit}
+                className="text-xs bg-primary text-primary-foreground px-3 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium"
+              >
                 Edit Profile
               </button>
             </div>
           </div>
-          <h1
-            style={{ fontFamily: "'Lora', serif" }}
-            className="text-xl font-semibold text-foreground"
-          >
-            Layla Hassan
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1
+              style={{ fontFamily: "'Lora', serif" }}
+              className="text-xl font-semibold text-foreground"
+            >
+              {name}
+            </h1>
+            <span title={isPublic ? "Visible to the network" : "Private profile"}>
+              {isPublic ? (
+                <Eye className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <Shield className="w-4 h-4 text-muted-foreground" />
+              )}
+            </span>
+          </div>
           <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
-            <span className="flex items-center gap-1">
-              <span>🇵🇸</span> Palestine
-            </span>
-            <span>·</span>
-            <span className="flex items-center gap-1">
-              <GraduationCap className="w-3.5 h-3.5" /> MSc Environmental Engineering
-            </span>
-            <span>·</span>
-            <span className="flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5" /> Berlin, Germany
-            </span>
+            {profile.country && (
+              <span className="flex items-center gap-1">
+                {portalFlag(profile.country)} {profile.country}
+              </span>
+            )}
+            {current && (
+              <>
+                <span>·</span>
+                <span className="flex items-center gap-1">
+                  <GraduationCap className="w-3.5 h-3.5" /> {current.field_of_study}
+                </span>
+              </>
+            )}
+            {location && (
+              <>
+                <span>·</span>
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5" /> {location}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -950,126 +1236,280 @@ function ProfileView() {
       <div className="grid md:grid-cols-3 gap-5">
         {/* Main column */}
         <div className="md:col-span-2 space-y-5">
-          <div className="bg-card border border-border rounded-xl p-5">
-            <h2
-              style={{ fontFamily: "'Lora', serif" }}
-              className="font-semibold text-foreground mb-3"
-            >
-              Personal Biography
-            </h2>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              I am a Palestinian environmental engineer currently pursuing my MSc at TU Berlin, supported by the TBHF scholarship. My research focuses on water resource management in conflict-affected regions, drawing on fieldwork conducted in Gaza and the West Bank.
-            </p>
-            <p className="text-sm text-muted-foreground leading-relaxed mt-3">
-              I believe that science and community are both tools of resilience. Through this network, I hope to connect with other scholars who are turning adversity into research, and research into change.
-            </p>
-          </div>
+          <Section title="Personal Biography">
+            {profile.bio ? (
+              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                {profile.bio}
+              </p>
+            ) : (
+              <EmptyHint>Add a short biography so other scholars can get to know you.</EmptyHint>
+            )}
+          </Section>
 
-          <div className="bg-card border border-border rounded-xl p-5">
-            <h2
-              style={{ fontFamily: "'Lora', serif" }}
-              className="font-semibold text-foreground mb-3"
-            >
-              Skills & Expertise
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {skills.map((skill) => (
-                <span
-                  key={skill}
-                  className="text-xs px-3 py-1.5 bg-secondary text-secondary-foreground rounded-full font-medium"
-                >
-                  {skill}
-                </span>
-              ))}
-            </div>
-          </div>
+          <Section title="Skills & Expertise">
+            {profile.skills.length ? (
+              <Chips items={profile.skills.map((s) => s.name)} />
+            ) : (
+              <EmptyHint>No skills added yet.</EmptyHint>
+            )}
+          </Section>
 
-          <div className="bg-card border border-border rounded-xl p-5">
-            <h2
-              style={{ fontFamily: "'Lora', serif" }}
-              className="font-semibold text-foreground mb-3"
-            >
-              Recent Posts
-            </h2>
-            <div className="space-y-4">
-              {INITIAL_POSTS.slice(0, 2).map((post) => (
-                <div key={post.id} className="pb-4 border-b border-border last:border-0 last:pb-0">
+          {profile.interests.length > 0 && (
+            <Section title="Interests">
+              <Chips items={profile.interests} />
+            </Section>
+          )}
+
+          {profile.career_aspirations && (
+            <Section title="Career Aspirations">
+              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-line">
+                {profile.career_aspirations}
+              </p>
+            </Section>
+          )}
+
+          {profile.academic_records.length > 0 && (
+            <Section title="Academic Records">
+              <div className="space-y-4">
+                {profile.academic_records.map((rec) => (
                   <div
-                    className="text-sm font-medium text-foreground mb-1 leading-snug"
-                    style={{ fontFamily: "'Lora', serif" }}
+                    key={rec.id}
+                    className="pb-4 border-b border-border last:border-0 last:pb-0"
                   >
-                    {post.title}
+                    <div className="text-sm font-medium text-foreground">
+                      {rec.field_of_study} · {rec.degree_level}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {rec.institution_name}, {rec.country_of_study}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {rec.start_year}
+                      {" – "}
+                      {rec.is_current ? "Present" : rec.end_year ?? ""}
+                      {rec.gpa != null ? ` · GPA ${rec.gpa}` : ""}
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    <span className="text-primary">{post.group}</span> · {post.time} ·{" "}
-                    {post.upvotes} upvotes
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+                ))}
+              </div>
+            </Section>
+          )}
         </div>
 
         {/* Info column */}
         <div className="space-y-4">
-          <div className="bg-card border border-border rounded-xl p-5">
-            <h3
-              style={{ fontFamily: "'Lora', serif" }}
-              className="text-sm font-semibold text-foreground mb-4"
-            >
-              Academic Info
-            </h3>
-            <div className="space-y-3">
-              {academicInfo.map(({ label, value }) => (
-                <div key={label}>
-                  <div className="text-xs text-muted-foreground mb-0.5">{label}</div>
-                  <div className="text-xs font-semibold text-foreground">{value}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-card border border-border rounded-xl p-5">
-            <h3
-              style={{ fontFamily: "'Lora', serif" }}
-              className="text-sm font-semibold text-foreground mb-3"
-            >
-              Network
-            </h3>
-            <div className="grid grid-cols-2 gap-3 text-center">
-              {[
-                { value: "43", label: "Connections" },
-                { value: "8", label: "Posts" },
-              ].map((s) => (
-                <div key={s.label}>
-                  <div
-                    className="text-xl font-semibold text-primary"
-                    style={{ fontFamily: "'Lora', serif" }}
-                  >
-                    {s.value}
+          <Section small title="Personal Info">
+            {personalInfo.length ? (
+              <div className="space-y-3">
+                {personalInfo.map(({ label, value }) => (
+                  <div key={label}>
+                    <div className="text-xs text-muted-foreground mb-0.5">{label}</div>
+                    <div className="text-xs font-semibold text-foreground">{value}</div>
                   </div>
-                  <div className="text-xs text-muted-foreground">{s.label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyHint>No details yet.</EmptyHint>
+            )}
+          </Section>
 
-          <div className="bg-card border border-border rounded-xl p-5">
-            <h3
-              style={{ fontFamily: "'Lora', serif" }}
-              className="text-sm font-semibold text-foreground mb-3"
-            >
-              Groups
-            </h3>
-            <div className="space-y-2">
-              {GROUPS.filter((g) => g.joined).map((group) => (
-                <div key={group.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>{group.emoji}</span>
-                  <span className="truncate">{group.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          {profile.languages.length > 0 && (
+            <Section small title="Languages">
+              <Chips items={profile.languages.map((l) => l.name)} />
+            </Section>
+          )}
+
+          <Section small title="Visibility">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Your profile is currently{" "}
+              {isPublic ? "visible to the network." : "private — only you can see it."}
+            </p>
+          </Section>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProfileEditor({
+  profile,
+  onSave,
+  onDone,
+}: {
+  profile: ProfileWithRelations;
+  onSave: (changes: Partial<EditableProfile>) => Promise<{ error: string | null }>;
+  onDone: () => void;
+}) {
+  const [form, setForm] = useState({
+    full_name: profile.full_name ?? "",
+    bio: profile.bio ?? "",
+    nationality: profile.nationality ?? "",
+    date_of_birth: profile.date_of_birth ?? "",
+    gender: profile.gender ?? "",
+    phone: profile.phone ?? "",
+    country: profile.country ?? "",
+    city: profile.city ?? "",
+    career_aspirations: profile.career_aspirations ?? "",
+    is_public: profile.profile_visibility === "public",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const set = (key: keyof typeof form, value: string | boolean) =>
+    setForm((f) => ({ ...f, [key]: value }));
+
+  const handleSave = async () => {
+    if (!form.full_name.trim()) {
+      setError("Full name is required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    const changes: Partial<EditableProfile> = {
+      full_name: form.full_name.trim(),
+      bio: form.bio.trim() || null,
+      nationality: form.nationality.trim() || null,
+      date_of_birth: form.date_of_birth || null,
+      gender: form.gender.trim() || null,
+      phone: form.phone.trim() || null,
+      country: form.country.trim() || null,
+      city: form.city.trim() || null,
+      career_aspirations: form.career_aspirations.trim() || null,
+      profile_visibility: form.is_public ? "public" : "private",
+    };
+    const res = await onSave(changes);
+    setSaving(false);
+    if (res.error) setError(res.error);
+    else onDone();
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto p-6">
+      <div className="bg-card border border-border rounded-2xl p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <h1
+            style={{ fontFamily: "'Lora', serif" }}
+            className="text-xl font-semibold text-foreground"
+          >
+            Edit Profile
+          </h1>
+          <button
+            onClick={onDone}
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            aria-label="Close editor"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {error && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+
+        <Field label="Full name">
+          <input
+            className={inputClass}
+            value={form.full_name}
+            onChange={(e) => set("full_name", e.target.value)}
+          />
+        </Field>
+
+        <Field label="Biography">
+          <textarea
+            rows={4}
+            className={inputClass}
+            value={form.bio}
+            onChange={(e) => set("bio", e.target.value)}
+            placeholder="Tell the network about yourself..."
+          />
+        </Field>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <Field label="Nationality">
+            <input
+              className={inputClass}
+              value={form.nationality}
+              onChange={(e) => set("nationality", e.target.value)}
+            />
+          </Field>
+          <Field label="Date of birth">
+            <input
+              type="date"
+              className={inputClass}
+              value={form.date_of_birth}
+              onChange={(e) => set("date_of_birth", e.target.value)}
+            />
+          </Field>
+          <Field label="Gender">
+            <input
+              className={inputClass}
+              value={form.gender}
+              onChange={(e) => set("gender", e.target.value)}
+            />
+          </Field>
+          <Field label="Phone">
+            <input
+              className={inputClass}
+              value={form.phone}
+              onChange={(e) => set("phone", e.target.value)}
+            />
+          </Field>
+          <Field label="Country">
+            <input
+              className={inputClass}
+              value={form.country}
+              onChange={(e) => set("country", e.target.value)}
+            />
+          </Field>
+          <Field label="City">
+            <input
+              className={inputClass}
+              value={form.city}
+              onChange={(e) => set("city", e.target.value)}
+            />
+          </Field>
+        </div>
+
+        <Field label="Career aspirations">
+          <textarea
+            rows={3}
+            className={inputClass}
+            value={form.career_aspirations}
+            onChange={(e) => set("career_aspirations", e.target.value)}
+          />
+        </Field>
+
+        <p className="text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+          Skills, languages, interests and academic records are managed separately — editors for
+          those are coming next.
+        </p>
+
+        <label className="flex items-center gap-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            checked={form.is_public}
+            onChange={(e) => set("is_public", e.target.checked)}
+            className="w-4 h-4 accent-primary"
+          />
+          Make my profile visible to the network
+        </label>
+
+        <div className="flex gap-2 justify-end pt-4 border-t border-border">
+          <button
+            onClick={onDone}
+            className="text-sm border border-border px-4 py-2 rounded-lg text-muted-foreground hover:bg-muted transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="text-sm bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors font-medium flex items-center gap-2 disabled:opacity-60"
+          >
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+            Save changes
+          </button>
         </div>
       </div>
     </div>
@@ -1184,11 +1624,19 @@ function GalleryView() {
 // ─────────────────────────────────────────────
 
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const { session, loading } = useAuth();
   const [view, setView] = useState<View>("dashboard");
 
-  if (!loggedIn) {
-    return <LandingView onLogin={() => setLoggedIn(true)} />;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!session) {
+    return <LandingView />;
   }
 
   return (
