@@ -13,6 +13,7 @@ import type {
   VolunteerEntry,
 } from "@/lib/types";
 import { colors, radius, shadow } from "@/lib/theme";
+import { COUNTRIES } from "@/lib/countries";
 
 const labelStyle: React.CSSProperties = { fontSize: 13, fontWeight: 600, color: colors.inkMuted };
 const inputStyle: React.CSSProperties = {
@@ -71,6 +72,26 @@ function Text({ name, label, def, placeholder, type = "text", eye }: { name: str
     </Field>
   );
 }
+// Renders <option>s for the country list, prepending any saved value that isn't in the list
+// so existing profiles never lose their selection.
+function countryOptions(current?: string | null) {
+  const extra = current && !COUNTRIES.includes(current) ? [current] : [];
+  return (
+    <>
+      <option value="">Select…</option>
+      {extra.map((c) => <option key={c} value={c}>{c}</option>)}
+      {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+    </>
+  );
+}
+// Form-submitted country dropdown (uncontrolled, bound to a form field name).
+function CountrySelect({ name, label, def, eye }: { name: string; label: string; def?: string | null; eye?: React.ReactNode }) {
+  return (
+    <Field label={label} eye={eye}>
+      <select id={name} name={name} defaultValue={def ?? ""} style={inputStyle}>{countryOptions(def)}</select>
+    </Field>
+  );
+}
 function Area({ name, label, def, placeholder, rows = 4, eye }: { name: string; label: string; def?: string | null; placeholder?: string; rows?: number; eye?: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 14 }}>
@@ -102,7 +123,6 @@ export default function ProfileEditForm({
 }) {
   const { profile, alumni } = data;
   const isAlumni = profile.role === "alumni";
-  const roleLabel = profile.role === "alumni" ? "Alumni" : profile.role === "admin" ? "Admin" : "Student";
 
   const [state, formAction, pending] = useActionState<SaveState, FormData>(updateProfile, null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(profile.avatar_url);
@@ -183,11 +203,7 @@ export default function ProfileEditForm({
         <h1 style={{ fontSize: 26, fontWeight: 700, color: colors.ink, margin: 0 }}>Edit profile</h1>
         <Link href="/profile" style={{ fontSize: 14, color: colors.inkMuted, fontWeight: 600 }}>Cancel</Link>
       </div>
-      <div style={{ fontSize: 13.5, color: colors.inkFaint, marginBottom: 22, display: "flex", alignItems: "center", gap: 8 }}>
-        <span>The</span>
-        <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.brandDeep, background: colors.tintBlue, padding: "3px 10px", borderRadius: radius.pill }}>{roleLabel}</span>
-        <span>icon next to each field controls who can see it. Toggle to Public or Private.</span>
-      </div>
+      <div style={{ marginBottom: 22 }} />
 
       {/* Identity */}
       <Card title="Identity">
@@ -204,13 +220,14 @@ export default function ProfileEditForm({
               {uploading ? "Uploading…" : "Change photo"}
             </button>
             <input ref={fileRef} type="file" accept="image/*" onChange={onPickFile} style={{ display: "none" }} />
+            <div style={{ fontSize: 12, color: colors.inkFaint, marginTop: 6 }}>Optional</div>
             {uploadErr && <div style={{ fontSize: 12, color: "#C0392B", marginTop: 6 }}>{uploadErr}</div>}
           </div>
         </div>
 
         <Row cols={3}>
           <Text name="full_name" label="Full name" def={profile.full_name} placeholder="Layla Haddad" />
-          <Text name="nationality" label="Nationality" def={profile.nationality} placeholder="Palestinian" eye={eye("nationality")} />
+          <CountrySelect name="nationality" label="Country of nationality" def={profile.nationality} eye={eye("nationality")} />
           <Text name="phone" label="Phone" def={profile.phone} placeholder="Optional" eye={eye("phone")} />
         </Row>
         <Row>
@@ -224,7 +241,7 @@ export default function ProfileEditForm({
           {eye("location")}
         </div>
         <Row>
-          <Text name="country" label="Country of residence" def={profile.country} placeholder="Palestine" />
+          <CountrySelect name="country" label="Country of residence" def={profile.country} />
           <Text name="city" label="City of residence" def={profile.city} placeholder="Ramallah" />
         </Row>
       </Card>
@@ -260,7 +277,7 @@ export default function ProfileEditForm({
             </Row>
             <Row cols={3}>
               <Field label="Field of study"><input value={r.field_of_study} onChange={(e) => updRec(i, { field_of_study: e.target.value })} placeholder="Public Health" style={inputStyle} /></Field>
-              <Field label="Country of study"><input value={r.country_of_study} onChange={(e) => updRec(i, { country_of_study: e.target.value })} placeholder="Palestine" style={inputStyle} /></Field>
+              <Field label="Country of study"><select value={r.country_of_study} onChange={(e) => updRec(i, { country_of_study: e.target.value })} style={inputStyle}>{countryOptions(r.country_of_study)}</select></Field>
               <Field label="GPA (optional)"><input type="number" step="0.01" value={r.gpa ?? ""} onChange={(e) => updRec(i, { gpa: e.target.value })} placeholder="3.8" style={inputStyle} /></Field>
             </Row>
             <Row cols={3}>

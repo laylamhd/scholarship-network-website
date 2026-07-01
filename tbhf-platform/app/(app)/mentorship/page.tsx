@@ -87,7 +87,7 @@ export default async function MentorshipPage({
         <div>
           <h1 style={{ fontSize: 27, fontWeight: 700, margin: 0 }}>Mentorship</h1>
           <p style={{ fontSize: 15, opacity: 0.92, margin: "5px 0 0", maxWidth: 620, lineHeight: 1.5 }}>
-            Connect current scholars with alumni who have walked the path before — for guidance on study, careers and life beyond the scholarship.
+            Connect current scholars with alumni who have walked the path before.
           </p>
         </div>
       </div>
@@ -157,7 +157,7 @@ export default async function MentorshipPage({
       ) : (
         /* ============ STUDENT browse: Find a mentor ============ */
         <section>
-          <SectionTitle hint="Alumni who've opted in to guide current scholars.">Find a mentor</SectionTitle>
+          <SectionTitle>Find a mentor</SectionTitle>
 
           <MentorSearch initialQuery={q ?? ""} />
 

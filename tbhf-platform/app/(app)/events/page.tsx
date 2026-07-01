@@ -34,11 +34,11 @@ export default async function EventsPage({
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", paddingBottom: 18, borderBottom: `2px solid ${colors.ink}` }}>
         <div>
           <h1 style={{ fontSize: 36, fontWeight: 800, color: colors.ink, margin: 0, letterSpacing: "-0.02em" }}>Events &amp; Volunteering</h1>
-          <p style={{ fontSize: 15, color: colors.inkFaint, margin: "6px 0 0", maxWidth: 560, lineHeight: 1.5 }}>
-            {isVol
-              ? "Start community projects, lend a hand, and track the difference you make."
-              : "Workshops, webinars and volunteer projects — all on one calendar."}
-          </p>
+          {isVol && (
+            <p style={{ fontSize: 15, color: colors.inkFaint, margin: "6px 0 0", maxWidth: 560, lineHeight: 1.5 }}>
+              Start community projects, lend a hand, and track the difference you make.
+            </p>
+          )}
         </div>
         {isVol ? (
           <Link href="/volunteer/new" style={createBtn()}>

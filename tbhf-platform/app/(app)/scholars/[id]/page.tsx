@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import ProfileView from "@/components/ProfileView";
-import { getFullProfile, getCurrentUser } from "@/lib/profiles";
+import { getFullProfile, getCurrentUser, isProfileModerator } from "@/lib/profiles";
 import { isFollowing } from "@/lib/community";
 
 export default async function ScholarPage({
@@ -15,7 +15,10 @@ export default async function ScholarPage({
   if (!data) notFound();
 
   const isOwn = user?.id === data.profile.id;
-  const following = !isOwn && user ? await isFollowing(user.id, id) : false;
+  const [following, moderator] = await Promise.all([
+    !isOwn && user ? isFollowing(user.id, id) : Promise.resolve(false),
+    isProfileModerator(id),
+  ]);
 
-  return <ProfileView data={data} isOwn={isOwn} isFollowing={following} />;
+  return <ProfileView data={data} isOwn={isOwn} isFollowing={following} isModerator={moderator} />;
 }

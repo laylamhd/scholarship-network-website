@@ -26,9 +26,6 @@ export default async function GroupsPage({
           + Create group
         </Link>
       </div>
-      <p style={{ fontSize: 14.5, color: colors.inkFaint, margin: "0 0 22px" }}>
-        University, country and thematic communities across the network.
-      </p>
 
       {/* Search + category filter */}
       <form action="/groups" method="get" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 22 }}>
