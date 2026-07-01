@@ -89,9 +89,6 @@ export default async function ResourcesPage({
           </Link>
         )}
       </div>
-      <p style={{ fontSize: 14.5, color: colors.inkFaint, margin: "0 0 22px" }}>
-        Curated study, career, wellbeing and humanitarian-learning resources.
-      </p>
 
       {/* Search */}
       <form action="/resources" method="get" style={{ marginBottom: 24, maxWidth: 460 }}>

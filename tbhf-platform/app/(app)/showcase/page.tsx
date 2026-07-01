@@ -94,9 +94,6 @@ export default async function ShowcasePage({
           </span>
           <div>
             <h1 style={{ fontSize: 27, fontWeight: 700, margin: 0 }}>Multimedia Showcase</h1>
-            <p style={{ fontSize: 14.5, opacity: 0.92, margin: "4px 0 0", maxWidth: 560, lineHeight: 1.5 }}>
-              Photos, videos, posters, artworks and presentations from across the TBHF community.
-            </p>
           </div>
         </div>
         <Link href="/showcase/new" style={{ background: "#fff", color: colors.brandDeep, borderRadius: radius.pill, padding: "11px 22px", fontSize: 14.5, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 7 }}>

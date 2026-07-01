@@ -77,7 +77,7 @@ export default function AdminAdvancedSettings({
         <SectionHead
           icon="shield"
           title="Moderators"
-          blurb="Give a scholar or alumnus a helping-hand role. You choose exactly what each moderator can access and manage — they always have fewer privileges than an admin."
+          blurb="Give a scholar or alumnus a helping-hand role. You choose exactly what each moderator can access and manage. They always have fewer privileges than an admin."
           action={<AddButton label="Assign moderator" onClick={() => { setError(null); setPicker("moderator"); }} disabled={pending} />}
         />
 

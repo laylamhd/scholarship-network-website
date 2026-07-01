@@ -88,7 +88,7 @@ function workRange(e: { start_date: string | null; end_date: string | null; is_c
   return `${start}${e.is_current ? " – present" : e.end_date ? ` – ${fmtMonth(e.end_date)}` : ""}`;
 }
 
-export default function ProfileView({ data, isOwn, isFollowing = false }: { data: FullProfile; isOwn: boolean; isFollowing?: boolean }) {
+export default function ProfileView({ data, isOwn, isFollowing = false, isModerator = false }: { data: FullProfile; isOwn: boolean; isFollowing?: boolean; isModerator?: boolean }) {
   const { profile, academic, skills, languages, interests, alumni, employment, certifications, volunteer } = data;
 
   // Per-field privacy: owner sees everything; others see a field only if not hidden.
@@ -164,6 +164,9 @@ export default function ProfileView({ data, isOwn, isFollowing = false }: { data
                 <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.brandDeep, background: colors.tintBlue, padding: "4px 10px", borderRadius: radius.pill, textTransform: "capitalize" }}>
                   {profile.role === "scholar" ? "Student" : profile.role}
                 </span>
+                {isModerator && (
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: "#5B3E9B", background: "#EEE8F9", padding: "4px 10px", borderRadius: radius.pill }}>Moderator</span>
+                )}
                 {isAlumni && alumni?.willing_to_mentor && (
                   <span style={{ fontSize: 11.5, fontWeight: 700, color: "#8A6D3B", background: "#FBF0E6", padding: "4px 10px", borderRadius: radius.pill }}>Open to mentoring</span>
                 )}

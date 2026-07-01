@@ -46,9 +46,6 @@ export default function AdminDashboard({
         <div style={{ position: "relative" }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, opacity: 0.9 }}>Administrator dashboard</div>
           <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4 }}>Welcome back, {firstName}</div>
-          <div style={{ fontSize: 14.5, opacity: 0.92, marginTop: 6, maxWidth: 600, lineHeight: 1.5 }}>
-            Manage the TBHF Global Scholars &amp; Alumni Network — registrations, demographics, engagement and communications.
-          </div>
         </div>
       </div>
 

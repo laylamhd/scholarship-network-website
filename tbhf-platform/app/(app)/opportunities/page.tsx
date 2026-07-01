@@ -64,9 +64,6 @@ export default async function OpportunitiesPage({
           </Link>
         )}
       </div>
-      <p style={{ fontSize: 14.5, color: colors.inkFaint, margin: "0 0 22px" }}>
-        Internships, fellowships, graduate programs and jobs for TBHF scholars.
-      </p>
 
       {/* Search */}
       <form action="/opportunities" method="get" style={{ marginBottom: 24, maxWidth: 460 }}>
@@ -148,8 +145,7 @@ export default async function OpportunitiesPage({
       {/* Career services (coming soon) */}
       {browsing && (
         <div style={{ marginTop: 36 }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: colors.ink, marginBottom: 4 }}>Career services</div>
-          <div style={{ fontSize: 13.5, color: colors.inkFaint, marginBottom: 14 }}>One-to-one support to help you land the role — coming soon.</div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: colors.ink, marginBottom: 14 }}>Career services</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
             {SERVICES.map((s) => (
               <div key={s.label} style={{ background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: "18px", opacity: 0.8 }}>

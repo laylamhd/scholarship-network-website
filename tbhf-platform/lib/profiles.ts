@@ -119,6 +119,13 @@ export async function getMyFullProfile(): Promise<FullProfile | null> {
   return getFullProfile(user.id);
 }
 
+/** Whether a given profile has been granted moderator status (badge only). */
+export async function isProfileModerator(id: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("is_profile_moderator", { p_id: id });
+  return data === true;
+}
+
 /** The signed-in user's role (lightweight). */
 export async function getMyRole(): Promise<string | null> {
   const supabase = await createClient();
