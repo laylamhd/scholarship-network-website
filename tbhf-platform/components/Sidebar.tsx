@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -146,6 +147,22 @@ function Icon({ children }: { children: React.ReactNode }) {
 export default function Sidebar({ name, unread = 0, notifUnread = 0, canModerate = false }: { name: string; unread?: number; notifUnread?: number; canModerate?: boolean }) {
   const pathname = usePathname();
   const settingsOn = pathname.startsWith("/settings");
+  const [open, setOpen] = useState(false);
+
+  // Close the mobile drawer whenever the route changes.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
+  // Lock body scroll while the mobile drawer is open.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
 
   // Moderators get a dedicated console link; admins manage from Home instead.
   const navItems: Item[] = canModerate
@@ -153,28 +170,62 @@ export default function Sidebar({ name, unread = 0, notifUnread = 0, canModerate
     : items;
 
   return (
-    <aside
-      style={{
-        width: 264,
-        flexShrink: 0,
-        background: "#fff",
-        borderInlineEnd: `1px solid ${colors.border}`,
-        display: "flex",
-        flexDirection: "column",
-        padding: "22px 16px",
-        height: "100vh",
-        position: "sticky",
-        top: 0,
-      }}
-    >
+    <>
+      {/* Mobile-only hamburger toggle (hidden on desktop via CSS) */}
+      <button
+        type="button"
+        className="app-hamburger"
+        aria-label={open ? "Close menu" : "Open menu"}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {open ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+        </svg>
+      </button>
+
+      {/* Mobile-only backdrop */}
+      <div
+        className={`app-sidebar-backdrop${open ? " open" : ""}`}
+        onClick={() => setOpen(false)}
+        aria-hidden
+      />
+
+      <aside
+        className={`app-sidebar${open ? " open" : ""}`}
+        style={{
+          width: 264,
+          flexShrink: 0,
+          background: "#fff",
+          borderInlineEnd: `1px solid ${colors.border}`,
+          display: "flex",
+          flexDirection: "column",
+          padding: "22px 16px",
+          height: "100vh",
+          position: "sticky",
+          top: 0,
+        }}
+      >
       <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "4px 8px 0", marginBottom: 30 }}>
         <div style={{ width: 40, height: 40, borderRadius: 12, background: "#fff", boxShadow: "0 2px 10px rgba(17,166,214,.18)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
           <Image src="/tbhf-mark.png" alt="TBHF" width={34} height={34} style={{ objectFit: "contain" }} />
         </div>
-        <div style={{ lineHeight: 1.15 }}>
+        <div style={{ lineHeight: 1.15, flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 700 }}>TBHF</div>
           <div style={{ fontSize: 11.5, color: colors.inkFaint, fontWeight: 500 }}>Scholars Network</div>
         </div>
+        {/* Mobile-only close button inside the drawer */}
+        <button
+          type="button"
+          className="app-drawer-close"
+          aria-label="Close menu"
+          onClick={() => setOpen(false)}
+          style={{ width: 34, height: 34, borderRadius: 9, border: 0, background: colors.bg, color: colors.inkMuted, cursor: "pointer" }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
       </div>
 
       <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -257,5 +308,6 @@ export default function Sidebar({ name, unread = 0, notifUnread = 0, canModerate
         </Link>
       </div>
     </aside>
+    </>
   );
 }

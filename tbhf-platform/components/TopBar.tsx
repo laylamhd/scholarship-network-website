@@ -129,6 +129,7 @@ export default function TopBar({
 
   return (
     <header
+      className="app-topbar"
       style={{
         position: "sticky",
         top: 0,
