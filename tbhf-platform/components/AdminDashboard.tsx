@@ -400,8 +400,8 @@ function MembersTab({ members, currentUserId }: { members: AdminMember[]; curren
 
       <div style={{ background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, overflow: "hidden" }}>
         {/* Header row */}
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(180px,2fr) 1.1fr 1fr 1.2fr auto", gap: 12, padding: "12px 16px", fontSize: 11.5, fontWeight: 700, color: colors.inkFaint, textTransform: "uppercase", letterSpacing: 0.4 }}>
-          <span>Member</span><span>Profile</span><span>Joined</span><span>Role</span><span>Status</span>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(180px,2fr) 1.1fr 1fr", gap: 12, padding: "12px 16px", fontSize: 11.5, fontWeight: 700, color: colors.inkFaint, textTransform: "uppercase", letterSpacing: 0.4 }}>
+          <span>Member</span><span>Profile</span><span>Joined</span>
         </div>
         {filtered.length === 0 ? (
           <div style={{ padding: "32px", textAlign: "center", color: colors.inkFaint, fontSize: 14, borderTop: `1px solid ${colors.border}` }}>No members match.</div>

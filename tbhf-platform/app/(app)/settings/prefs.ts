@@ -12,6 +12,7 @@ export type NotifGroup = {
 export const NOTIF_GROUPS: NotifGroup[] = [
   { key: "messages", label: "Direct messages", description: "When someone sends you a private message." },
   { key: "community", label: "Community activity", description: "Likes and comments on your posts and discussions." },
+  { key: "mentions", label: "Mentions", description: "When someone @mentions you in a community post or comment." },
   { key: "follows", label: "New followers", description: "When another scholar starts following you." },
   { key: "mentorship", label: "Mentorship", description: "Mentorship requests and updates on your requests." },
   { key: "content_review", label: "Content review", description: "When your submitted content is approved or needs changes." },

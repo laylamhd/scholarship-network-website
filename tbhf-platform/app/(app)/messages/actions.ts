@@ -44,3 +44,31 @@ export async function markConversationRead(conversationId: string) {
   await supabase.rpc("mark_conversation_read", { conv: conversationId });
   revalidatePath("/messages");
 }
+
+/** Hide a message from just my own view ("Delete for me"). */
+export async function deleteMessageForMe(
+  conversationId: string,
+  messageId: string,
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("delete_message_for_me", { msg: messageId });
+  if (error) return { error: error.message };
+
+  revalidatePath(`/messages/${conversationId}`);
+  revalidatePath("/messages");
+  return {};
+}
+
+/** Mark a message deleted for both participants ("Delete for everyone"). Sender only. */
+export async function deleteMessageForEveryone(
+  conversationId: string,
+  messageId: string,
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("delete_message_for_everyone", { msg: messageId });
+  if (error) return { error: error.message };
+
+  revalidatePath(`/messages/${conversationId}`);
+  revalidatePath("/messages");
+  return {};
+}

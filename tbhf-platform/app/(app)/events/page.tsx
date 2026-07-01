@@ -75,7 +75,8 @@ async function EventsTab({ userId, type, isAdmin }: { userId: string; type?: str
     listProjects({ userId }),
     getEventTypeCounts(),
   ]);
-  const modes = isAdmin ? await getEnumValues("event_mode") : [];
+  // Everyone can quick-add from the calendar, so everyone needs the mode options.
+  const modes = await getEnumValues("event_mode");
   const events = [...upcoming, ...past];
   const countsObj = Object.fromEntries(counts);
 
@@ -86,7 +87,7 @@ async function EventsTab({ userId, type, isAdmin }: { userId: string; type?: str
         <EventTypeFilter selected={type} counts={countsObj} />
       </div>
 
-      <EventsCalendar events={events} projects={calProjects} isAdmin={isAdmin} modes={modes} />
+      <EventsCalendar events={events} projects={calProjects} modes={modes} />
     </>
   );
 }

@@ -4,16 +4,13 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/profiles";
 import { getConversation } from "@/lib/messages";
 import MessageComposer from "@/components/MessageComposer";
+import MessageBubble from "@/components/MessageBubble";
 import MarkRead from "@/components/MarkRead";
-import { colors, radius } from "@/lib/theme";
+import { colors } from "@/lib/theme";
 
 function initials(name: string): string {
   const p = name.trim().split(/\s+/);
   return (p[0]?.[0] ?? "") + (p[1]?.[0] ?? "");
-}
-
-function fmtTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
 }
 
 export default async function ConversationPage({
@@ -61,17 +58,17 @@ export default async function ConversationPage({
             No messages yet — say hello.
           </div>
         ) : (
-          messages.map((m) => {
-            const mine = m.sender_id === user.id;
-            return (
-              <div key={m.id} style={{ alignSelf: mine ? "flex-end" : "flex-start", maxWidth: "72%" }}>
-                <div style={{ background: mine ? colors.brand : "#fff", color: mine ? "#fff" : colors.ink, border: mine ? "none" : `1px solid ${colors.border}`, borderRadius: 16, borderBottomRightRadius: mine ? 4 : 16, borderBottomLeftRadius: mine ? 16 : 4, padding: "10px 14px", fontSize: 14.5, lineHeight: 1.5, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                  {m.body}
-                </div>
-                <div style={{ fontSize: 11, color: colors.inkFaint, marginTop: 3, textAlign: mine ? "right" : "left" }}>{fmtTime(m.created_at)}</div>
-              </div>
-            );
-          })
+          messages.map((m) => (
+            <MessageBubble
+              key={m.id}
+              conversationId={id}
+              id={m.id}
+              body={m.body}
+              createdAt={m.created_at}
+              mine={m.sender_id === user.id}
+              deletedForAll={m.deleted_for_all}
+            />
+          ))
         )}
       </div>
 

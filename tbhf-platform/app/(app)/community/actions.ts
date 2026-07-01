@@ -62,6 +62,8 @@ export async function createCommunity(
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const accent = String(formData.get("accent") ?? "").trim();
+  const coverUrl = String(formData.get("cover_url") ?? "").trim();
+  const logoUrl = String(formData.get("logo_url") ?? "").trim();
 
   if (!name) return { error: "Please give the community a name." };
 
@@ -70,6 +72,8 @@ export async function createCommunity(
     p_name: name,
     p_description: description,
     p_accent: accent || null,
+    p_cover_url: coverUrl || null,
+    p_logo_url: logoUrl || null,
   });
   if (error) return { error: error.message };
 
@@ -107,14 +111,27 @@ export async function deleteCommunity(communityId: string): Promise<{ error?: st
   redirect("/community");
 }
 
-export async function createCommunityPost(communityId: string, content: string): Promise<{ error?: string }> {
+export async function createCommunityPost(
+  communityId: string,
+  content: string,
+  announcement = false,
+): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("create_community_post", {
     p_community: communityId,
     p_content: content,
+    p_announcement: announcement,
   });
   if (error) return { error: error.message };
   revalidatePath(`/community/${communityId}`);
+  return {};
+}
+
+export async function editCommunityPost(postId: string, content: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("edit_community_post", { p_post: postId, p_content: content });
+  if (error) return { error: error.message };
+  revalidatePath("/community", "layout");
   return {};
 }
 
@@ -126,15 +143,64 @@ export async function deleteCommunityPost(communityId: string, postId: string): 
   return {};
 }
 
-export async function addCommunityComment(postId: string, content: string): Promise<{ error?: string }> {
+export async function togglePinCommunityPost(postId: string): Promise<{ error?: string; pinned?: boolean }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("toggle_pin_community_post", { p_post: postId });
+  if (error) return { error: error.message };
+  return { pinned: data as boolean };
+}
+
+export async function toggleLockCommunityPost(postId: string): Promise<{ error?: string; locked?: boolean }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("toggle_lock_community_post", { p_post: postId });
+  if (error) return { error: error.message };
+  return { locked: data as boolean };
+}
+
+export async function toggleBookmarkCommunityPost(postId: string): Promise<{ error?: string; bookmarked?: boolean }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("toggle_bookmark_community_post", { p_post: postId });
+  if (error) return { error: error.message };
+  return { bookmarked: data as boolean };
+}
+
+export async function addCommunityComment(
+  postId: string,
+  content: string,
+  parentId?: string | null,
+): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("add_community_comment", {
     p_post: postId,
     p_content: content,
+    p_parent: parentId ?? null,
   });
   if (error) return { error: error.message };
   revalidatePath("/community", "layout");
   return {};
+}
+
+export async function editCommunityComment(commentId: string, content: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("edit_community_comment", { p_comment: commentId, p_content: content });
+  if (error) return { error: error.message };
+  revalidatePath("/community", "layout");
+  return {};
+}
+
+export async function deleteCommunityComment(commentId: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("delete_community_comment", { p_comment: commentId });
+  if (error) return { error: error.message };
+  revalidatePath("/community", "layout");
+  return {};
+}
+
+export async function togglePinCommunityComment(commentId: string): Promise<{ error?: string; pinned?: boolean }> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("toggle_pin_community_comment", { p_comment: commentId });
+  if (error) return { error: error.message };
+  return { pinned: data as boolean };
 }
 
 export async function toggleCommunityLike(postId: string): Promise<{ error?: string; liked?: boolean }> {
@@ -142,6 +208,30 @@ export async function toggleCommunityLike(postId: string): Promise<{ error?: str
   const { data, error } = await supabase.rpc("toggle_community_like", { p_post: postId });
   if (error) return { error: error.message };
   return { liked: data as boolean };
+}
+
+export async function setCommunitySpotlight(
+  communityId: string,
+  profileId: string,
+  note: string,
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_community_spotlight", {
+    p_community: communityId,
+    p_profile: profileId,
+    p_note: note,
+  });
+  if (error) return { error: error.message };
+  revalidatePath(`/community/${communityId}`);
+  return {};
+}
+
+export async function clearCommunitySpotlight(communityId: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("clear_community_spotlight", { p_community: communityId });
+  if (error) return { error: error.message };
+  revalidatePath(`/community/${communityId}`);
+  return {};
 }
 
 export async function searchAddableProfiles(

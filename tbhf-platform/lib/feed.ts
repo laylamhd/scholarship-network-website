@@ -1,15 +1,21 @@
 import { createClient } from "@/lib/supabase/server";
 
+export type StaffRole = "admin" | "moderator" | null;
+
 export type FeedAuthor = {
   id: string;
   full_name: string;
   avatar_url: string | null;
+  staff?: StaffRole;
 };
 
 export type FeedComment = {
   id: string;
   content: string;
   created_at: string;
+  edited_at?: string | null;
+  parent_id?: string | null;
+  pinned?: boolean;
   author: FeedAuthor;
 };
 
@@ -17,6 +23,11 @@ export type FeedPost = {
   id: string;
   content: string;
   created_at: string;
+  edited_at?: string | null;
+  is_announcement?: boolean;
+  is_locked?: boolean;
+  pinned?: boolean;
+  bookmarked?: boolean;
   author: FeedAuthor;
   like_count: number;
   liked: boolean;
