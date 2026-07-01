@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getMyRole } from "@/lib/profiles";
 import { getMyCapabilities } from "@/lib/admin";
@@ -18,6 +19,8 @@ export default async function CommunityPage({
   // Moderators with the communities capability curate communities like admins.
   const caps = role === "admin" ? [] : await getMyCapabilities();
   const isAdmin = role === "admin" || caps.includes("manage_communities");
+  // Only full admins may CREATE a community (moderators curate existing ones).
+  const canCreate = role === "admin";
 
   const { q } = await searchParams;
   const communities = await listCommunities(q);
@@ -26,7 +29,7 @@ export default async function CommunityPage({
     <div style={{ maxWidth: 1180, margin: "0 auto", padding: "32px", width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 6 }}>
         <h1 style={{ fontSize: 26, fontWeight: 700, color: colors.ink, margin: 0 }}>Communities</h1>
-        {isAdmin && (
+        {canCreate && (
           <Link href="/community/new" style={{ display: "inline-flex", alignItems: "center", gap: 7, background: colors.brand, color: "#fff", borderRadius: radius.pill, padding: "10px 20px", fontSize: 14.5, fontWeight: 700, boxShadow: shadow.brand }}>
             <Icon name="plus" size={16} /> Create community
           </Link>
@@ -57,7 +60,7 @@ export default async function CommunityPage({
               <div style={{ fontSize: 16, fontWeight: 700, color: colors.ink, marginTop: 12 }}>
                 {q ? `No communities match “${q}”.` : "No communities yet"}
               </div>
-              {!q && (
+              {!q && canCreate && (
                 <div style={{ fontSize: 14, color: colors.inkFaint, marginTop: 6 }}>
                   <Link href="/community/new" style={{ color: colors.brand, fontWeight: 600 }}>Create the first community</Link>.
                 </div>
@@ -78,11 +81,17 @@ export default async function CommunityPage({
             const accent = c.accent || colors.brand;
             return (
               <Link key={c.id} href={`/community/${c.id}`} style={{ background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-                <div style={{ height: 8, background: accent }} />
+                {c.cover_url ? (
+                  <div style={{ position: "relative", height: 72 }}>
+                    <Image src={c.cover_url} alt="" fill style={{ objectFit: "cover" }} />
+                  </div>
+                ) : (
+                  <div style={{ height: 8, background: accent }} />
+                )}
                 <div style={{ padding: "18px 20px", display: "flex", flexDirection: "column", flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                    <div style={{ width: 42, height: 42, borderRadius: 12, background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 800, flexShrink: 0, textTransform: "uppercase" }}>
-                      {c.name.trim()[0] ?? "C"}
+                    <div style={{ position: "relative", width: 42, height: 42, borderRadius: 12, background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: 800, flexShrink: 0, textTransform: "uppercase", overflow: "hidden" }}>
+                      {c.logo_url ? <Image src={c.logo_url} alt="" fill style={{ objectFit: "cover" }} /> : (c.name.trim()[0] ?? "C")}
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 16, fontWeight: 700, color: colors.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>

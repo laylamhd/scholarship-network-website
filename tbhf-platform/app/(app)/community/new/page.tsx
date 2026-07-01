@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getMyRole } from "@/lib/profiles";
-import { getMyCapabilities } from "@/lib/admin";
 import CommunityCreateForm from "@/components/CommunityCreateForm";
 import { colors } from "@/lib/theme";
 
@@ -9,10 +8,9 @@ export default async function NewCommunityPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  // Admins and moderators with the communities capability can create communities.
+  // Only full admins may create a community.
   const role = await getMyRole();
-  const caps = role === "admin" ? [] : await getMyCapabilities();
-  if (role !== "admin" && !caps.includes("manage_communities")) redirect("/community");
+  if (role !== "admin") redirect("/community");
 
   return (
     <div style={{ maxWidth: 640, margin: "0 auto", padding: "32px", width: "100%" }}>

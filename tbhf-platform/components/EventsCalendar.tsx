@@ -46,12 +46,10 @@ function entryEndMs(en: Entry): number {
 export default function EventsCalendar({
   events,
   projects = [],
-  isAdmin = false,
   modes = [],
 }: {
   events: EventItem[];
   projects?: ProjectCard[];
-  isAdmin?: boolean;
   modes?: string[];
 }) {
   const [view, setView] = useState<"calendar" | "stack">("calendar");
@@ -109,7 +107,7 @@ export default function EventsCalendar({
       </div>
 
       {view === "calendar" ? (
-        <MonthGrid cursor={cursor} setCursor={setCursor} byDay={byDay} today={today} onDayClick={isAdmin ? setQuickDate : undefined} />
+        <MonthGrid cursor={cursor} setCursor={setCursor} byDay={byDay} today={today} onDayClick={setQuickDate} />
       ) : (
         <StackView upcoming={upcoming} past={past} />
       )}
@@ -295,6 +293,8 @@ function MonthGrid({
               style={{
                 position: "relative",
                 minHeight: 104,
+                minWidth: 0, // let long chips ellipsize instead of stretching the cell
+                overflow: "hidden",
                 borderRight: (i + 1) % 7 === 0 ? "none" : `1px solid ${colors.border}`,
                 borderBottom: i < 35 ? `1px solid ${colors.border}` : "none",
                 background: inMonth ? "#fff" : colors.bg,
@@ -317,7 +317,7 @@ function MonthGrid({
                   {d.getDate()}
                 </span>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
                 {dayEntries.slice(0, 3).map((en) =>
                   en.kind === "event" ? <EventChip key={`e-${en.ev.id}`} e={en.ev} /> : <ProjectChip key={`p-${en.pr.id}`} p={en.pr} />
                 )}
@@ -333,6 +333,17 @@ function MonthGrid({
   );
 }
 
+// Every calendar chip is the same fixed-height block; long titles are ellipsized.
+const chipBase: React.CSSProperties = {
+  display: "flex", alignItems: "center", gap: 5,
+  height: 20, borderRadius: 6, padding: "0 6px",
+  fontSize: 11, fontWeight: 600, overflow: "hidden",
+};
+// The title span truncates with "…" when it doesn't fit.
+const chipLabel: React.CSSProperties = {
+  minWidth: 0, flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+};
+
 function EventChip({ e }: { e: EventItem }) {
   const isPast = new Date(e.end_at ?? e.start_at).getTime() < Date.now();
   const pending = e.review_status !== "approved";
@@ -342,16 +353,14 @@ function EventChip({ e }: { e: EventItem }) {
       onClick={(ev) => ev.stopPropagation()}
       title={pending ? `${timeStr(e.start_at)} · ${e.title} (awaiting approval)` : `${timeStr(e.start_at)} · ${e.title}`}
       style={{
-        display: "flex", alignItems: "center", gap: 4,
+        ...chipBase,
         background: pending ? "#FBF6E9" : isPast ? colors.bg : colors.tintBlue,
         color: pending ? "#8A6D3B" : isPast ? colors.inkMuted : colors.brandDeep,
-        borderRadius: 6, padding: "2px 6px", fontSize: 11, fontWeight: 600,
-        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         borderLeft: pending ? "3px dashed #C9A227" : `3px solid ${isPast ? colors.borderStrong : colors.brand}`,
       }}
     >
-      <span style={{ fontWeight: 700 }}>{timeStr(e.start_at)}</span>
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{e.title}</span>
+      <span style={{ fontWeight: 700, flexShrink: 0 }}>{timeStr(e.start_at)}</span>
+      <span style={chipLabel}>{e.title}</span>
     </Link>
   );
 }
@@ -364,16 +373,13 @@ function ProjectChip({ p }: { p: ProjectCard }) {
       onClick={(ev) => ev.stopPropagation()}
       title={`${p.title} · volunteering`}
       style={{
-        display: "flex", alignItems: "center", gap: 4,
+        ...chipBase,
         background: isPast ? colors.bg : VOL.bg,
         color: isPast ? colors.inkMuted : VOL.fg,
-        borderRadius: 6, padding: "2px 6px", fontSize: 11, fontWeight: 600,
-        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
         borderLeft: `3px solid ${isPast ? colors.borderStrong : VOL.fg}`,
       }}
     >
-      <span style={{ flexShrink: 0, display: "inline-flex" }}><Icon name="handshake" size={11} /></span>
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{p.title}</span>
+      <span style={chipLabel}>{p.title}</span>
     </Link>
   );
 }

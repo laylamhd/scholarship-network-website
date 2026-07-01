@@ -19,6 +19,7 @@ export type Message = {
   body: string;
   created_at: string;
   read_at: string | null;
+  deleted_for_all: boolean;
 };
 
 export type OtherParticipant = {
@@ -84,5 +85,12 @@ export async function getConversation(
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
 
-  return { other, messages: (messages as Message[]) ?? [] };
+  // Drop messages the current user has "deleted for me".
+  const { data: hidden } = await supabase
+    .from("message_deletions")
+    .select("message_id");
+  const hiddenIds = new Set((hidden ?? []).map((h) => h.message_id as string));
+  const visible = ((messages as Message[]) ?? []).filter((m) => !hiddenIds.has(m.id));
+
+  return { other, messages: visible };
 }

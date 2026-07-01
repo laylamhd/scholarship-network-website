@@ -17,6 +17,7 @@ function meta(type: string): { icon: IconName; accent: string } {
     case "new_follower": return { icon: "users", accent: "#7A5AF8" };
     case "community_comment": return { icon: "chat", accent: colors.brand };
     case "community_like": return { icon: "heart", accent: "#E0517A" };
+    case "mention": return { icon: "users", accent: "#7A5AF8" };
     case "mentorship_request": return { icon: "handshake", accent: "#7A5AF8" };
     case "mentorship_accepted": return { icon: "check", accent: "#0F8F6B" };
     case "mentorship_declined": return { icon: "x", accent: "#D9534F" };

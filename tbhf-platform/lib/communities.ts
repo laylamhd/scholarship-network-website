@@ -7,6 +7,8 @@ export type CommunityListItem = {
   name: string;
   description: string | null;
   accent: string | null;
+  cover_url: string | null;
+  logo_url: string | null;
   member_count: number;
   post_count: number;
   is_member: boolean;
@@ -18,7 +20,16 @@ export type CommunityMember = {
   full_name: string;
   avatar_url: string | null;
   role: UserRole;
+  staff?: "admin" | "moderator" | null;
   joined_at: string;
+};
+
+export type CommunitySpotlight = {
+  profile_id: string;
+  full_name: string;
+  avatar_url: string | null;
+  role: UserRole;
+  note: string | null;
 };
 
 export type CommunityDetail = {
@@ -26,12 +37,17 @@ export type CommunityDetail = {
   name: string;
   description: string | null;
   accent: string | null;
+  cover_url: string | null;
+  logo_url: string | null;
   created_at: string;
   is_admin: boolean;
+  can_moderate: boolean;
   can_delete: boolean;
+  my_staff: "admin" | "moderator" | null;
   member_count: number;
   post_count: number;
   members: CommunityMember[];
+  spotlight: CommunitySpotlight | null;
 };
 
 export type MemberContentItem = {
@@ -72,9 +88,19 @@ export async function getCommunity(id: string): Promise<CommunityDetail | null> 
   return (data as CommunityDetail) ?? null;
 }
 
-export async function getCommunityFeed(id: string): Promise<FeedPost[]> {
+export type FeedSort = "new" | "top";
+
+export async function getCommunityFeed(
+  id: string,
+  sort: FeedSort = "new",
+  savedOnly = false,
+): Promise<FeedPost[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("get_community_feed", { p_community: id });
+  const { data, error } = await supabase.rpc("get_community_feed", {
+    p_community: id,
+    p_sort: sort,
+    p_saved_only: savedOnly,
+  });
   if (error) {
     console.error("getCommunityFeed:", error.message);
     return [];

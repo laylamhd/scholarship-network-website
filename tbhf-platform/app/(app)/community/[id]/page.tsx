@@ -6,6 +6,7 @@ import {
   getCommunity,
   getCommunityFeed,
   getCommunityMemberContent,
+  type FeedSort,
   type MemberContentItem,
 } from "@/lib/communities";
 import { notificationLink } from "@/lib/notificationLink";
@@ -13,6 +14,7 @@ import { Icon } from "@/components/Icon";
 import CommunityPostComposer from "@/components/CommunityPostComposer";
 import CommunityPostCard from "@/components/CommunityPostCard";
 import CommunityManageMembers from "@/components/CommunityManageMembers";
+import CommunitySpotlightCard from "@/components/CommunitySpotlightCard";
 import CommunityTabs from "@/components/CommunityTabs";
 import DeleteCommunityButton from "@/components/DeleteCommunityButton";
 import { colors, radius } from "@/lib/theme";
@@ -62,35 +64,66 @@ function ContentRow({ item }: { item: MemberContentItem }) {
 
 export default async function CommunityDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ sort?: string; saved?: string }>;
 }) {
   const { id } = await params;
+  const { sort: sortParam, saved: savedParam } = await searchParams;
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+
+  const sort: FeedSort = sortParam === "top" ? "top" : "new";
+  const savedOnly = savedParam === "1";
 
   const community = await getCommunity(id);
   // null = not a member and not an admin -> not visible.
   if (!community) notFound();
 
   const [feed, content] = await Promise.all([
-    getCommunityFeed(id),
+    getCommunityFeed(id, sort, savedOnly),
     getCommunityMemberContent(id),
   ]);
 
   const accent = community.accent || colors.brand;
+  const mentionMembers = community.members.map((m) => ({ id: m.id, full_name: m.full_name }));
+
+  const base = `/community/${community.id}`;
+  const savedQ = savedOnly ? "&saved=1" : "";
+  const pill = (on: boolean): React.CSSProperties => ({
+    fontSize: 13, fontWeight: 700, padding: "6px 14px", borderRadius: 999,
+    color: on ? "#fff" : colors.inkMuted, background: on ? colors.brand : colors.bg,
+    border: `1px solid ${on ? colors.brand : colors.border}`, textDecoration: "none",
+  });
 
   const discussionPanel = (
     <>
-      <CommunityPostComposer communityId={community.id} />
+      <CommunityPostComposer communityId={community.id} members={mentionMembers} canModerate={community.can_moderate} />
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <Link href={`${base}?sort=new${savedQ}`} style={pill(sort === "new")}>Newest</Link>
+        <Link href={`${base}?sort=top${savedQ}`} style={pill(sort === "top")}>Top</Link>
+        <Link href={`${base}?sort=${sort}${savedOnly ? "" : "&saved=1"}`} style={{ ...pill(savedOnly), marginInlineStart: "auto", display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <Icon name="bookmark" size={14} /> Saved
+        </Link>
+      </div>
+
       {feed.length === 0 ? (
         <div style={{ background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: "40px 26px", textAlign: "center", color: colors.inkFaint, fontSize: 14 }}>
-          No posts yet — start the conversation.
+          {savedOnly ? "You haven't saved any posts in this community yet." : "No posts yet — start the conversation."}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {feed.map((p) => (
-            <CommunityPostCard key={p.id} post={p} communityId={community.id} canManage={community.is_admin} />
+            <CommunityPostCard
+              key={p.id}
+              post={p}
+              communityId={community.id}
+              members={mentionMembers}
+              canModerate={community.can_moderate}
+              currentUserId={user.id}
+            />
           ))}
         </div>
       )}
@@ -116,26 +149,29 @@ export default async function CommunityDetailPage({
 
       {/* Banner header */}
       <div style={{ background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, overflow: "hidden", marginTop: 12, marginBottom: 20 }}>
-        <div style={{ height: 64, background: accent }} />
-        <div style={{ padding: "0 26px 22px", marginTop: -26 }}>
-          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 16, minWidth: 0 }}>
-              <div style={{ width: 72, height: 72, borderRadius: 18, background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, border: "4px solid #fff", flexShrink: 0, textTransform: "uppercase" }}>
-                {community.name.trim()[0] ?? "C"}
-              </div>
-              <div style={{ minWidth: 0, paddingBottom: 4 }}>
-                <h1 style={{ fontSize: 25, fontWeight: 700, color: colors.ink, margin: 0 }}>{community.name}</h1>
-                <div style={{ fontSize: 13.5, color: colors.inkFaint, marginTop: 3 }}>
-                  {community.member_count} {community.member_count === 1 ? "member" : "members"} · {community.post_count} {community.post_count === 1 ? "post" : "posts"}
-                </div>
+        <div style={{ position: "relative", height: 100, background: community.cover_url ? colors.bg : accent }}>
+          {community.cover_url && <Image src={community.cover_url} alt="" fill style={{ objectFit: "cover" }} />}
+        </div>
+        <div style={{ padding: "0 26px 22px" }}>
+          {/* logo overlaps the bar, on its own line so the title never touches the bar */}
+          <div style={{ marginTop: -40 }}>
+            <div style={{ position: "relative", width: 80, height: 80, borderRadius: 20, background: accent, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 32, fontWeight: 800, border: "4px solid #fff", flexShrink: 0, textTransform: "uppercase", overflow: "hidden" }}>
+              {community.logo_url ? <Image src={community.logo_url} alt="" fill style={{ objectFit: "cover" }} /> : (community.name.trim()[0] ?? "C")}
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{ fontSize: 25, fontWeight: 700, color: colors.ink, margin: 0 }}>{community.name}</h1>
+              <div style={{ fontSize: 13.5, color: colors.inkFaint, marginTop: 4 }}>
+                {community.member_count} {community.member_count === 1 ? "member" : "members"} · {community.post_count} {community.post_count === 1 ? "post" : "posts"}
               </div>
             </div>
             {community.can_delete && (
-              <div style={{ paddingBottom: 4 }}>
-                <DeleteCommunityButton communityId={community.id} name={community.name} />
-              </div>
+              <DeleteCommunityButton communityId={community.id} name={community.name} />
             )}
           </div>
+
           {community.description && (
             <div style={{ fontSize: 14.5, color: colors.inkMuted, lineHeight: 1.6, marginTop: 16, whiteSpace: "pre-wrap" }}>{community.description}</div>
           )}
@@ -162,6 +198,13 @@ export default async function CommunityDetailPage({
               Created {new Date(community.created_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
             </div>
           </div>
+
+          <CommunitySpotlightCard
+            communityId={community.id}
+            spotlight={community.spotlight}
+            canModerate={community.can_moderate}
+            members={community.members}
+          />
 
           {community.is_admin ? (
             <CommunityManageMembers communityId={community.id} members={community.members} />

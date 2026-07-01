@@ -13,6 +13,7 @@ export function notificationLink(n: { entity_type: string | null; entity_id: str
     case "conversations": return `/messages/${n.entity_id}`;
     case "profiles": return `/scholars/${n.entity_id}`;
     case "community_posts": return "/community";
+    case "communities": return `/community/${n.entity_id}`;
     case "mentorships": return "/mentorship";
     case "admin_announcements": return "/";
     default: return null;
