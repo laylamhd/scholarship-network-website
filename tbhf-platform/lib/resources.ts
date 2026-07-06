@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { signBucketUrls } from "@/lib/storage";
 
 export type ResourceCategory = {
   id: string;
@@ -101,6 +102,11 @@ export async function listResources(opts: {
       bookmarked: saved.has(r.id as string),
     };
   });
+
+  // SECURITY (BUG-007): the resources bucket is private — replace stored file
+  // references with short-lived signed URLs for the download link.
+  const signedFiles = await signBucketUrls("resources", items.map((i) => i.file_url));
+  items = items.map((i, idx) => ({ ...i, file_url: signedFiles[idx] }));
 
   if (opts.savedOnly) items = items.filter((i) => i.bookmarked);
   return items;

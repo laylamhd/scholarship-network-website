@@ -91,8 +91,10 @@ begin
   -- readable snippet: strip the token markup down to "@Name"
   v_snippet := left(regexp_replace(p_content, '@\[([^\]]+)\]\([0-9a-fA-F-]{36}\)', '@\1', 'g'), 140);
 
+  -- SECURITY (BUG-014): @all broadcasts only for admins / community moderators
+  -- of THIS community (community_can_moderate also requires membership).
   v_is_all := p_content ~* '(^|[^[:alnum:]_])@all([^[:alnum:]_]|$)'
-              and (public.is_admin() or public.mod_can('manage_communities'));
+              and public.community_can_moderate(p_community);
 
   if v_is_all then
     -- notify every other member of the community, once
