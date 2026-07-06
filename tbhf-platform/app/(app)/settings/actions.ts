@@ -41,7 +41,7 @@ export async function updatePassword(_prev: FormState, formData: FormData): Prom
   const confirm = String(formData.get("confirm_password") ?? "");
 
   if (!current || !next) return { error: "Please fill in every field." };
-  if (next.length < 6) return { error: "New password must be at least 6 characters." };
+  if (next.length < 12) return { error: "New password must be at least 12 characters." }; // BUG-009
   if (next !== confirm) return { error: "The new passwords don't match." };
   if (next === current) return { error: "Your new password matches the current one." };
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { safeUrl } from "@/lib/safeUrl";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -483,7 +484,7 @@ function EventRow({ e, past }: { e: EventItem; past?: boolean }) {
         <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap", alignItems: "center" }}>
           {past ? (
             e.recording_url ? (
-              <a href={e.recording_url} target="_blank" rel="noreferrer" style={solidLink()}><Icon name="play" size={15} /> Watch recording</a>
+              <a href={safeUrl(e.recording_url)} target="_blank" rel="noreferrer" style={solidLink()}><Icon name="play" size={15} /> Watch recording</a>
             ) : (
               <span style={{ fontSize: 13, color: colors.inkFaint }}>Event ended</span>
             )
@@ -491,7 +492,7 @@ function EventRow({ e, past }: { e: EventItem; past?: boolean }) {
             <>
               <EventRsvpButton eventId={e.id} initialStatus={e.my_status} />
               {e.registration_link && (
-                <a href={e.registration_link} target="_blank" rel="noreferrer" style={ghostLink()}><Icon name="ticket" size={15} /> Register</a>
+                <a href={safeUrl(e.registration_link)} target="_blank" rel="noreferrer" style={ghostLink()}><Icon name="ticket" size={15} /> Register</a>
               )}
             </>
           )}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { safeUrl } from "@/lib/safeUrl";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser, getMyRole } from "@/lib/profiles";
@@ -77,7 +78,7 @@ export default async function ShowcaseItemPage({ params }: { params: Promise<{ i
 
       {/* Open original / external link */}
       {(item.media_url || item.external_url) && !image && (
-        <a href={item.external_url || item.media_url || "#"} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, background: colors.brand, color: "#fff", borderRadius: radius.pill, padding: "10px 20px", fontSize: 14, fontWeight: 700, boxShadow: shadow.brand, marginBottom: 22 }}>
+        <a href={safeUrl(item.external_url || item.media_url) || "#"} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, background: colors.brand, color: "#fff", borderRadius: radius.pill, padding: "10px 20px", fontSize: 14, fontWeight: 700, boxShadow: shadow.brand, marginBottom: 22 }}>
           Open {item.media_type === "Presentation" ? "presentation" : "original"} <Icon name="externalLink" size={15} />
         </a>
       )}

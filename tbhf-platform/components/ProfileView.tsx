@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { safeUrl } from "@/lib/safeUrl";
 import Image from "next/image";
 import type { FullProfile, VolunteerEntry, EmploymentEntry } from "@/lib/types";
 import { colors, radius, shadow } from "@/lib/theme";
@@ -254,7 +255,7 @@ export default function ProfileView({ data, isOwn, isFollowing = false, isModera
                   {alumni.linkedin_url && (
                     <div>
                       <div style={{ fontSize: 12, color: colors.inkFaint, fontWeight: 600 }}>LinkedIn</div>
-                      <a href={alumni.linkedin_url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 14, color: colors.brand, fontWeight: 600 }}>View profile <Icon name="externalLink" size={13} /></a>
+                      <a href={safeUrl(alumni.linkedin_url)} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 14, color: colors.brand, fontWeight: 600 }}>View profile <Icon name="externalLink" size={13} /></a>
                     </div>
                   )}
                 </div>

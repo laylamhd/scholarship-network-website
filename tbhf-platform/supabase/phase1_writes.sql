@@ -25,7 +25,12 @@ as $$
     order by e.enumsortorder
   );
 $$;
-grant execute on function public.get_enum_values(text) to anon, authenticated;
+-- SECURITY (BUG-012): dropdowns are only built after login, so don't let the
+-- anonymous role enumerate internal enum definitions. Revoke the default PUBLIC
+-- grant and expose the helper to authenticated users only.
+revoke execute on function public.get_enum_values(text) from public;
+revoke execute on function public.get_enum_values(text) from anon;
+grant execute on function public.get_enum_values(text) to authenticated;
 
 -- ---------- (B) relational write functions (scoped to the caller) ----------
 
@@ -179,10 +184,12 @@ $$;
 grant execute on function public.upsert_my_alumni_details(jsonb) to authenticated;
 
 -- ---------- (C) read RLS for alumni_details ----------
+-- SECURITY (BUG-003): restrict to authenticated so anon can't read employers,
+-- positions and LinkedIn URLs via the public REST API.
 alter table public.alumni_details enable row level security;
 drop policy if exists alumni_details_select on public.alumni_details;
 create policy alumni_details_select on public.alumni_details
-  for select using (public.can_view_profile(profile_id));
+  for select to authenticated using (public.can_view_profile(profile_id));
 
 -- ---------- (D) avatars storage bucket + policies ----------
 insert into storage.buckets (id, name, public)

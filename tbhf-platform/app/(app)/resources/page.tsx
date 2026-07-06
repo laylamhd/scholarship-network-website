@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { safeUrl } from "@/lib/safeUrl";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getMyRole } from "@/lib/profiles";
 import { getMyCapabilities } from "@/lib/admin";
@@ -145,7 +146,7 @@ export default async function ResourcesPage({
                     )}
                     <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center" }}>
                       {href ? (
-                        <a href={href} target="_blank" rel="noreferrer" style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, background: colors.brand, color: "#fff", borderRadius: radius.pill, padding: "9px 16px", fontSize: 13.5, fontWeight: 700, boxShadow: shadow.brand }}>Open <Icon name="externalLink" size={14} /></a>
+                        <a href={safeUrl(href)} target="_blank" rel="noreferrer" style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, background: colors.brand, color: "#fff", borderRadius: radius.pill, padding: "9px 16px", fontSize: 13.5, fontWeight: 700, boxShadow: shadow.brand }}>Open <Icon name="externalLink" size={14} /></a>
                       ) : (
                         <span style={{ flex: 1, textAlign: "center", color: colors.inkFaint, fontSize: 13 }}>No link</span>
                       )}

@@ -21,7 +21,11 @@ export async function login(
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
-    return { error: error.message };
+    // SECURITY (BUG-011): don't leak whether the email exists, is unconfirmed,
+    // or is rate-limited — all of which aid account enumeration. Log the detail
+    // server-side and show the user a single generic message.
+    console.error("login failed:", error.message);
+    return { error: "Invalid email or password." };
   }
 
   revalidatePath("/", "layout");
@@ -44,8 +48,9 @@ export async function signup(
   if (!email || !password) {
     return { error: "Please enter your email and password." };
   }
-  if (password.length < 6) {
-    return { error: "Password must be at least 6 characters." };
+  // SECURITY (BUG-009): enforce a stronger minimum length.
+  if (password.length < 12) {
+    return { error: "Password must be at least 12 characters." };
   }
   if (!fullName) {
     return { error: "Please enter your full name." };
@@ -89,22 +94,20 @@ export async function adminSignup(
   if (!email || !password) {
     return { error: "Please enter your email and password." };
   }
-  if (password.length < 6) {
-    return { error: "Password must be at least 6 characters." };
+  // SECURITY (BUG-009): enforce a stronger minimum length.
+  if (password.length < 12) {
+    return { error: "Password must be at least 12 characters." };
   }
   if (!fullName) return { error: "Please enter your full name." };
 
   const supabase = await createClient();
 
-  // Verify the code before creating anything, so a wrong code never leaves a
-  // junk account behind.
-  const { data: valid, error: verifyErr } = await supabase.rpc(
-    "verify_admin_code",
-    { p_code: code },
-  );
-  if (verifyErr) return { error: verifyErr.message };
-  if (!valid) return { error: "That admin access code is not valid." };
-
+  // SECURITY (BUG-004): do NOT pre-verify the code here — that required exposing
+  // verify_admin_code() to the anonymous role, giving the whole internet an
+  // unthrottled true/false oracle to brute-force the code against. Instead we
+  // create the account first, then redeem: redeem_admin_access() runs as an
+  // authenticated caller and validates the code itself (SECURITY DEFINER). A
+  // wrong code therefore just leaves an ordinary member account, never an admin.
   const { error } = await supabase.auth.signUp({
     email,
     password,
@@ -119,7 +122,11 @@ export async function adminSignup(
   );
   if (redeemErr) return { error: redeemErr.message };
   if (!redeemed) {
-    return { error: "Could not grant admin access. Contact the platform owner." };
+    return {
+      error:
+        "That admin access code is not valid. Your account was created as a " +
+        "regular member — sign in and contact the platform owner for admin access.",
+    };
   }
 
   revalidatePath("/", "layout");

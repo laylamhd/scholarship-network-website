@@ -38,7 +38,13 @@ as $$
       and value = btrim(p_code)
   );
 $$;
-grant execute on function public.verify_admin_code(text) to anon, authenticated;
+-- SECURITY (BUG-004): do NOT expose this as a public true/false oracle. Postgres
+-- grants EXECUTE to PUBLIC by default, so revoke it explicitly. Only
+-- redeem_admin_access() (SECURITY DEFINER, below) calls it, and that runs as the
+-- function owner, so it keeps working without any role-level grant.
+revoke execute on function public.verify_admin_code(text) from public;
+revoke execute on function public.verify_admin_code(text) from anon;
+revoke execute on function public.verify_admin_code(text) from authenticated;
 
 -- ---------- Redeem a code to grant the CALLER the admin role ----------
 create or replace function public.redeem_admin_access(p_code text)
@@ -68,11 +74,23 @@ end;
 $$;
 grant execute on function public.redeem_admin_access(text) to authenticated;
 
--- ---------- Set / rotate the admin access code ----------
--- Change 'CHANGE-ME-ADMIN-2026' to your own secret. Re-running this file keeps
--- whatever value is already stored (insert ... do nothing). To rotate the code
--- later, run:  update public.app_secrets set value = 'your-new-code'
---              where key = 'admin_access_code';
+-- ---------- Seed a UNIQUE, unguessable admin access code ----------
+-- SECURITY (BUG-001): never ship a shared, known default code. A fresh install
+-- gets a random 128-bit code so the admin gate is never publicly known even if
+-- the owner forgets to rotate it. Re-running this file keeps whatever value is
+-- already stored (insert ... do nothing).
+--
+-- Retrieve the generated code once (owner only, via the SQL editor):
+--     select value from public.app_secrets where key = 'admin_access_code';
+-- Then store it in a password manager. To rotate later:
+--     update public.app_secrets set value = 'your-new-strong-code'
+--       where key = 'admin_access_code';
+-- Use a high-entropy value (>= 20 random chars). The verify RPC is a boolean
+-- oracle with no lockout, so a weak/guessable code can be brute-forced (BUG-004).
 insert into public.app_secrets (key, value)
-values ('admin_access_code', 'CHANGE-ME-ADMIN-2026')
+values (
+  'admin_access_code',
+  -- 128 bits of randomness, hex-encoded (no pgcrypto extension required).
+  replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '')
+)
 on conflict (key) do nothing;
