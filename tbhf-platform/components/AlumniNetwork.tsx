@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { safeUrl } from "@/lib/safeUrl";
 import Image from "next/image";
 import { type AlumniCard, type OfferCard } from "@/lib/alumni";
 import { offerKindIcon, offerKindColor } from "@/lib/alumniOffers";
@@ -300,7 +301,7 @@ function AlumniCardView({ a }: { a: AlumniCard }) {
           </button>
         </form>
         {a.linkedin_url && (
-          <a href={a.linkedin_url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, background: "#fff", color: colors.brandDeep, border: `1.5px solid ${colors.borderBlue}`, borderRadius: radius.pill, padding: "9px 16px", fontSize: 13, fontWeight: 700 }}>
+          <a href={safeUrl(a.linkedin_url)} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, background: "#fff", color: colors.brandDeep, border: `1.5px solid ${colors.borderBlue}`, borderRadius: radius.pill, padding: "9px 16px", fontSize: 13, fontWeight: 700 }}>
             <Icon name="externalLink" size={14} /> LinkedIn
           </a>
         )}

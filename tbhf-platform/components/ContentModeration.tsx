@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { safeUrl } from "@/lib/safeUrl";
 import { useRouter } from "next/navigation";
 import { loadPendingItems, reviewContent } from "@/app/(app)/admin/actions";
 import { notificationLink } from "@/lib/notificationLink";
@@ -103,7 +104,7 @@ export default function ContentModeration({
                           <Icon name="x" size={14} /> Reject
                         </button>
                         {link && (
-                          <a href={link} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", color: colors.brandDeep, border: `1.5px solid ${colors.borderBlue}`, borderRadius: radius.pill, padding: "8px 16px", fontSize: 13, fontWeight: 700 }}>
+                          <a href={safeUrl(link)} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#fff", color: colors.brandDeep, border: `1.5px solid ${colors.borderBlue}`, borderRadius: radius.pill, padding: "8px 16px", fontSize: 13, fontWeight: 700 }}>
                             <Icon name="externalLink" size={14} /> Preview
                           </a>
                         )}

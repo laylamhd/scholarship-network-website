@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { safeUrl } from "@/lib/safeUrl";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/profiles";
@@ -67,10 +68,10 @@ export default async function ResearchDetailPage({ params }: { params: Promise<{
       {/* Links / file */}
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
         {post.link_url && (
-          <a href={post.link_url} target="_blank" rel="noreferrer" style={ghostLink()}><Icon name="link" size={16} /> Open link</a>
+          <a href={safeUrl(post.link_url)} target="_blank" rel="noreferrer" style={ghostLink()}><Icon name="link" size={16} /> Open link</a>
         )}
         {post.file_url && (
-          <a href={post.file_url} target="_blank" rel="noreferrer" style={ghostLink()}><Icon name="fileText" size={16} /> Download file</a>
+          <a href={safeUrl(post.file_url)} target="_blank" rel="noreferrer" style={ghostLink()}><Icon name="fileText" size={16} /> Download file</a>
         )}
       </div>
 

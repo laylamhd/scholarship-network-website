@@ -44,6 +44,16 @@ export async function getFullProfile(id: string): Promise<FullProfile | null> {
   if (error) console.error("getFullProfile profile:", error.message);
   if (!profile) return null;
 
+  // SECURITY (BUG-010): don't ship another member's email to the client. Profile
+  // pages (own + others') render from this object, and the owner's own email is
+  // shown from the auth session (settings), never from here — so blank it out for
+  // anyone but the owner. (A full fix that also blocks hand-crafted REST reads of
+  // the email column is tracked as a residual in SECURITY_AUDIT_FINDINGS.)
+  const viewer = await getCurrentUser();
+  if (viewer?.id !== id && profile) {
+    (profile as Record<string, unknown>).email = null;
+  }
+
   const [
     academicRes,
     skillsRes,

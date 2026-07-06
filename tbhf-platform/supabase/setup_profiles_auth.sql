@@ -32,9 +32,12 @@ create trigger on_auth_user_created
 
 alter table public.profiles enable row level security;
 
+-- SECURITY (BUG-002): restrict directory reads to logged-in members. Without
+-- `to authenticated`, the anon role could read every profile (incl. email) via
+-- the public REST API, bypassing the app's login gate.
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles
-  for select using (auth.uid() = id or profile_visibility = 'public');
+  for select to authenticated using (auth.uid() = id or profile_visibility = 'public');
 
 drop policy if exists profiles_update on public.profiles;
 create policy profiles_update on public.profiles
@@ -51,31 +54,36 @@ stable
 security definer
 set search_path = public
 as $$
+  -- SECURITY (BUG-003): require an authenticated caller. A null auth.uid()
+  -- (anonymous) must never see profile-linked data even for "public" profiles.
   select exists (
     select 1 from public.profiles
-    where id = p and (id = auth.uid() or profile_visibility = 'public')
+    where id = p
+      and auth.uid() is not null
+      and (id = auth.uid() or profile_visibility = 'public')
   );
 $$;
 
+-- SECURITY (BUG-003): all profile-linked tables restricted to authenticated.
 alter table public.scholar_academic_records enable row level security;
 drop policy if exists sar_select on public.scholar_academic_records;
 create policy sar_select on public.scholar_academic_records
-  for select using (public.can_view_profile(profile_id));
+  for select to authenticated using (public.can_view_profile(profile_id));
 
 alter table public.profile_skills enable row level security;
 drop policy if exists profile_skills_select on public.profile_skills;
 create policy profile_skills_select on public.profile_skills
-  for select using (public.can_view_profile(profile_id));
+  for select to authenticated using (public.can_view_profile(profile_id));
 
 alter table public.profile_languages enable row level security;
 drop policy if exists profile_languages_select on public.profile_languages;
 create policy profile_languages_select on public.profile_languages
-  for select using (public.can_view_profile(profile_id));
+  for select to authenticated using (public.can_view_profile(profile_id));
 
 alter table public.profile_interests enable row level security;
 drop policy if exists profile_interests_select on public.profile_interests;
 create policy profile_interests_select on public.profile_interests
-  for select using (public.can_view_profile(profile_id));
+  for select to authenticated using (public.can_view_profile(profile_id));
 
 alter table public.skills enable row level security;
 drop policy if exists skills_select on public.skills;

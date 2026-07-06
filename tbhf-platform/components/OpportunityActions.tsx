@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { safeUrl } from "@/lib/safeUrl";
 import { useRouter } from "next/navigation";
 import { toggleOppBookmark, setApplied } from "@/app/(app)/opportunities/actions";
 import { Icon } from "@/components/Icon";
@@ -53,7 +54,7 @@ export default function OpportunityActions({
 
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <a href={applicationLink} target="_blank" rel="noreferrer" onClick={() => { if (!applied) onApplied(); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: colors.brand, color: "#fff", borderRadius: radius.pill, padding: "9px 18px", fontSize: 13.5, fontWeight: 700, boxShadow: shadow.brand }}>
+      <a href={safeUrl(applicationLink)} target="_blank" rel="noreferrer" onClick={() => { if (!applied) onApplied(); }} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: colors.brand, color: "#fff", borderRadius: radius.pill, padding: "9px 18px", fontSize: 13.5, fontWeight: 700, boxShadow: shadow.brand }}>
         Apply <Icon name="externalLink" size={14} />
       </a>
       <button type="button" onClick={onApplied} disabled={pending} style={iconBtn(applied)}>
