@@ -4,6 +4,7 @@ import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/profiles";
 import { getResearch, getCollaborators } from "@/lib/research";
+import { signBucketUrl } from "@/lib/storage";
 import { researchKindIcon } from "@/lib/researchKinds";
 import { startConversation } from "@/app/(app)/messages/actions";
 import ResearchCollabButton from "@/components/ResearchCollabButton";
@@ -28,6 +29,9 @@ export default async function ResearchDetailPage({ params }: { params: Promise<{
   if (!post) notFound();
   const isOwner = post.author_id === user.id;
   const collaborators = isOwner ? await getCollaborators(post.id) : [];
+  // SECURITY (BUG-007): research bucket is private — sign the download link here
+  // (not in getResearch, which the edit form also uses with the raw path).
+  const fileUrl = await signBucketUrl("research", post.file_url);
 
   return (
     <div style={{ maxWidth: 820, margin: "0 auto", padding: "32px", width: "100%" }}>
@@ -70,8 +74,8 @@ export default async function ResearchDetailPage({ params }: { params: Promise<{
         {post.link_url && (
           <a href={safeUrl(post.link_url)} target="_blank" rel="noreferrer" style={ghostLink()}><Icon name="link" size={16} /> Open link</a>
         )}
-        {post.file_url && (
-          <a href={safeUrl(post.file_url)} target="_blank" rel="noreferrer" style={ghostLink()}><Icon name="fileText" size={16} /> Download file</a>
+        {post.file_url && fileUrl && (
+          <a href={safeUrl(fileUrl)} target="_blank" rel="noreferrer" style={ghostLink()}><Icon name="fileText" size={16} /> Download file</a>
         )}
       </div>
 

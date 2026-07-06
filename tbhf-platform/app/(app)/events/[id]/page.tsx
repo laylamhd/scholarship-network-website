@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentUser, getMyRole } from "@/lib/profiles";
 import { getMyCapabilities } from "@/lib/admin";
 import { getEvent } from "@/lib/events";
+import { safeUrl } from "@/lib/safeUrl";
 import { eventTypeIcon, formatMode, isOnlineMode } from "@/lib/eventTypes";
 import EventRsvpButton from "@/components/EventRsvpButton";
 import EventDeleteButton from "@/components/EventDeleteButton";
@@ -88,7 +89,7 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 24 }}>
         {past ? (
           event.recording_url ? (
-            <a href={event.recording_url} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, background: colors.brand, color: "#fff", borderRadius: radius.pill, padding: "11px 22px", fontSize: 14.5, fontWeight: 700, boxShadow: shadow.brand }}>
+            <a href={safeUrl(event.recording_url)} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, background: colors.brand, color: "#fff", borderRadius: radius.pill, padding: "11px 22px", fontSize: 14.5, fontWeight: 700, boxShadow: shadow.brand }}>
               <Icon name="play" size={16} /> Watch recording
             </a>
           ) : (
@@ -98,12 +99,12 @@ export default async function EventPage({ params }: { params: Promise<{ id: stri
           <>
             <EventRsvpButton eventId={event.id} initialStatus={event.my_status} />
             {event.registration_link && (
-              <a href={event.registration_link} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: colors.brandDeep, border: `1.5px solid ${colors.borderBlue}`, borderRadius: radius.pill, padding: "11px 22px", fontSize: 14.5, fontWeight: 700 }}>
+              <a href={safeUrl(event.registration_link)} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: colors.brandDeep, border: `1.5px solid ${colors.borderBlue}`, borderRadius: radius.pill, padding: "11px 22px", fontSize: 14.5, fontWeight: 700 }}>
                 <Icon name="ticket" size={16} /> Register
               </a>
             )}
             {isOnlineMode(event.mode) && event.online_link && (
-              <a href={event.online_link} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: colors.brandDeep, border: `1.5px solid ${colors.borderBlue}`, borderRadius: radius.pill, padding: "11px 22px", fontSize: 14.5, fontWeight: 700 }}>
+              <a href={safeUrl(event.online_link)} target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#fff", color: colors.brandDeep, border: `1.5px solid ${colors.borderBlue}`, borderRadius: radius.pill, padding: "11px 22px", fontSize: 14.5, fontWeight: 700 }}>
                 <Icon name="externalLink" size={16} /> Join online
               </a>
             )}

@@ -35,24 +35,21 @@ export async function getEnumValues(enumType: string): Promise<string[]> {
 export async function getFullProfile(id: string): Promise<FullProfile | null> {
   const supabase = await createClient();
 
+  // SECURITY (BUG-010): never read the `email` column here. Member email is not
+  // shown on profile pages (the owner's own email comes from the auth session in
+  // Settings), and the DB revokes column SELECT on profiles.email from clients so
+  // it can't be scraped via REST. Select every profile column EXCEPT email — keep
+  // this list in sync with the grant in supabase/security_hardening.sql.
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("*")
+    .select(
+      "id, full_name, avatar_url, role, country, nationality, gender, bio, profile_visibility, is_active, created_at, updated_at, onboarded_at, date_of_birth, phone, city, dashboard_layout, notification_prefs, field_privacy, research_interests, career_aspirations, volunteer_experience",
+    )
     .eq("id", id)
     .maybeSingle();
 
   if (error) console.error("getFullProfile profile:", error.message);
   if (!profile) return null;
-
-  // SECURITY (BUG-010): don't ship another member's email to the client. Profile
-  // pages (own + others') render from this object, and the owner's own email is
-  // shown from the auth session (settings), never from here — so blank it out for
-  // anyone but the owner. (A full fix that also blocks hand-crafted REST reads of
-  // the email column is tracked as a residual in SECURITY_AUDIT_FINDINGS.)
-  const viewer = await getCurrentUser();
-  if (viewer?.id !== id && profile) {
-    (profile as Record<string, unknown>).email = null;
-  }
 
   const [
     academicRes,

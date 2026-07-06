@@ -8,7 +8,9 @@ export type Profile = {
   id: string;
   role: UserRole;
   full_name: string;
-  email: string;
+  // Not selected for profile views (BUG-010): the profiles.email column is only
+  // readable by the owner (via the auth session) and admins (via admin_* RPCs).
+  email?: string;
   avatar_url: string | null;
   phone: string | null;
   nationality: string | null;
