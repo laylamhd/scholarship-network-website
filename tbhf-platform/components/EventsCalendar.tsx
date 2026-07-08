@@ -168,7 +168,7 @@ function QuickCreateModal({ date, modes, onClose }: { date: Date; modes: string[
           style={{ width: "100%", padding: "11px 14px", fontSize: 15, color: colors.ink, background: "#fff", border: `1.5px solid ${colors.borderStrong}`, borderRadius: radius.md, outline: "none", marginBottom: 12 }}
         />
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10, marginBottom: 12 }}>
           <select value={type} onChange={(e) => setType(e.target.value)} style={fieldStyle()}>
             {EVENT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
@@ -452,7 +452,7 @@ function DateChip({ iso, muted, accent }: { iso: string; muted?: boolean; accent
 function EventRow({ e, past }: { e: EventItem; past?: boolean }) {
   const d = dateParts(e.start_at);
   return (
-    <div style={{ display: "flex", gap: 18, background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: "18px 20px", opacity: past ? 0.92 : 1 }}>
+    <div className="entry-row" style={{ display: "flex", gap: 18, background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: "18px 20px", opacity: past ? 0.92 : 1, flexWrap: "wrap" }}>
       <DateChip iso={e.start_at} muted={past} />
 
       {e.cover_image_url && (
@@ -463,7 +463,7 @@ function EventRow({ e, past }: { e: EventItem; past?: boolean }) {
         </Link>
       )}
 
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="entry-main" style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {e.event_type && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: colors.brandDeep, background: colors.tintBlue, padding: "3px 10px", borderRadius: radius.pill }}>
@@ -509,7 +509,7 @@ function EventRow({ e, past }: { e: EventItem; past?: boolean }) {
 
 function ProjectRow({ p, past }: { p: ProjectCard; past?: boolean }) {
   return (
-    <div style={{ display: "flex", gap: 18, background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: "18px 20px", opacity: past ? 0.92 : 1 }}>
+    <div className="entry-row" style={{ display: "flex", gap: 18, background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: "18px 20px", opacity: past ? 0.92 : 1, flexWrap: "wrap" }}>
       <DateChip iso={`${p.start_date}T00:00:00`} muted={past} accent={past ? undefined : VOL.fg} />
 
       {p.image_url && (
@@ -520,7 +520,7 @@ function ProjectRow({ p, past }: { p: ProjectCard; past?: boolean }) {
         </Link>
       )}
 
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="entry-main" style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 700, color: VOL.fg, background: VOL.bg, padding: "3px 10px", borderRadius: radius.pill }}>
             <Icon name="handshake" size={12} /> Volunteering

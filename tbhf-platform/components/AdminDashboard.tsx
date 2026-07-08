@@ -54,12 +54,12 @@ export default function AdminDashboard({
         {TABS.map((t) => {
           const on = tab === t.id;
           return (
-            <button key={t.id} type="button" onClick={() => setTab(t.id)} style={{
-              display: "inline-flex", alignItems: "center", gap: 8, border: 0, background: "transparent", cursor: "pointer",
-              padding: "11px 16px", fontSize: 14, fontWeight: 700, color: on ? colors.brandDeep : colors.inkMuted,
-              borderBottom: `2.5px solid ${on ? colors.brand : "transparent"}`, marginBottom: -2,
+            <button key={t.id} type="button" onClick={() => setTab(t.id)} title={t.label} aria-label={t.label} style={{
+              display: "inline-flex", alignItems: "center", gap: 8, border: 0, background: on ? colors.tintBlue : "transparent", cursor: "pointer",
+              padding: "10px 16px", fontSize: 14, fontWeight: 700, color: on ? colors.brandDeep : colors.inkMuted,
+              borderRadius: radius.pill, marginBottom: 2,
             }}>
-              <Icon name={t.icon} size={16} /> {t.label}
+              <Icon name={t.icon} size={17} />{on && <span>{t.label}</span>}
             </button>
           );
         })}
@@ -209,7 +209,7 @@ function DemographicsTab({ d }: { d: AdminDemographics | null }) {
           ))}
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(320px, 100%), 1fr))", gap: 16 }}>
         {cards.map((c) => (
           <ChartCard key={c.title} title={c.title} rows={c.rows} view={view} />
         ))}

@@ -47,7 +47,7 @@ export default function EventForm({ modes, defaultStart, pendingReview = false }
     <form action={formAction} style={{ background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: "24px" }}>
       <input type="hidden" name="cover_image_url" value={posterUrl} />
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14, marginBottom: 16 }}>
+      <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14, marginBottom: 16 }}>
         <div>
           <label style={labelStyle} htmlFor="title">Title</label>
           <input id="title" name="title" placeholder="e.g. CV Masterclass with TBHF Alumni" style={inputStyle} required />
@@ -65,7 +65,7 @@ export default function EventForm({ modes, defaultStart, pendingReview = false }
         <textarea id="description" name="description" rows={4} placeholder="What is this event about, who is it for, and what will attendees gain?" style={{ ...inputStyle, resize: "vertical", lineHeight: 1.55 }} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+      <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
         <div>
           <label style={labelStyle} htmlFor="start_at">Starts</label>
           <input id="start_at" name="start_at" type="datetime-local" defaultValue={defaultStart} style={inputStyle} required />
@@ -76,7 +76,7 @@ export default function EventForm({ modes, defaultStart, pendingReview = false }
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+      <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
         <div>
           <label style={labelStyle} htmlFor="mode">Format</label>
           <select id="mode" name="mode" defaultValue={modeOptions[0]} style={inputStyle}>
@@ -94,7 +94,7 @@ export default function EventForm({ modes, defaultStart, pendingReview = false }
         <input id="online_link" name="online_link" type="url" placeholder="https://…" style={inputStyle} />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+      <div className="field-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
         <div>
           <label style={labelStyle} htmlFor="registration_link">Registration link <span style={{ fontWeight: 400, color: colors.inkFaint }}>(optional)</span></label>
           <input id="registration_link" name="registration_link" type="url" placeholder="https://…" style={inputStyle} />

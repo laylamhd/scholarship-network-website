@@ -16,7 +16,7 @@ export default function CommunityTabs({ tabs }: { tabs: CommunityTab[] }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: 6, borderBottom: `1px solid ${colors.border}`, marginBottom: 18 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", borderBottom: `1px solid ${colors.border}`, marginBottom: 18 }}>
         {tabs.map((t) => {
           const on = t.key === active;
           return (

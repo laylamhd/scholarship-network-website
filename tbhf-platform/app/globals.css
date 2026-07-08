@@ -264,6 +264,46 @@ a {
   }
 }
 
+/* Notification preview dropdown — the 340px panel is anchored to the right-aligned
+   bell, so on a narrow screen its left edge spills off-screen. Pin it to the
+   viewport instead so it stays fully visible. */
+@media (max-width: 640px) {
+  .notif-dropdown {
+    position: fixed !important;
+    top: 60px !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+  }
+}
+
+/* Event/volunteer stack rows — on phones the date chip + cover image would
+   squeeze the text column to one word per line. Let the text wrap onto its own
+   full-width line below them instead. */
+@media (max-width: 640px) {
+  .entry-main {
+    flex-basis: 100% !important;
+  }
+}
+
+/* Home hero — keep the three stat pills (Followers / My mentors / Following)
+   on a single row on phones instead of wrapping. */
+@media (max-width: 640px) {
+  .hero-stats {
+    width: 100%;
+    flex-wrap: nowrap !important;
+  }
+  .hero-stats .hero-stat {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .hero-stats .hero-stat-value {
+    font-size: 21px;
+  }
+}
+
 /* Notification welcome-back popup */
 @keyframes tbhfFade {
   from { opacity: 0; }

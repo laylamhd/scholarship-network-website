@@ -178,7 +178,7 @@ export default async function CommunityDetailPage({
         </div>
       </div>
 
-      <div className="profile-grid" style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 24, alignItems: "start" }}>
+      <div className="profile-grid" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 24, alignItems: "start" }}>
         {/* Main: tabs */}
         <CommunityTabs
           tabs={[
@@ -237,7 +237,7 @@ export default async function CommunityDetailPage({
         </div>
       </div>
 
-      <style>{`@media (max-width: 900px){ .profile-grid{ grid-template-columns: 1fr !important; } }`}</style>
+      <style>{`@media (max-width: 900px){ .profile-grid{ grid-template-columns: minmax(0, 1fr) !important; } }`}</style>
     </div>
   );
 }
