@@ -8,7 +8,6 @@ export type ScholarCard = {
   role: UserRole;
   nationality: string | null;
   country: string | null;
-  bio: string | null;
   isFollowing: boolean;
 };
 
@@ -48,7 +47,7 @@ export async function listScholars(
 
   let query = supabase
     .from("profiles")
-    .select("id, full_name, avatar_url, role, nationality, country, bio")
+    .select("id, full_name, avatar_url, role, nationality, country")
     .eq("is_active", true)
     .neq("id", viewerId)
     .order("full_name", { ascending: true })
@@ -78,7 +77,6 @@ export async function listScholars(
     role: p.role as UserRole,
     nationality: (p.nationality as string) ?? null,
     country: (p.country as string) ?? null,
-    bio: (p.bio as string) ?? null,
     isFollowing: followingIds.has(p.id as string),
   }));
 }
