@@ -2,9 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
-export type AuthState = { error: string } | null;
+// `notice` carries a non-error success message (e.g. "check your email to
+// confirm") so the form can show a confirmation state instead of redirecting.
+export type AuthState = { error?: string; notice?: string } | null;
+
+// Absolute origin of the current request, used to build the email confirmation
+// link's redirect target (emailRedirectTo).
+async function siteOrigin(): Promise<string> {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto =
+    h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
 
 export async function login(
   _prev: AuthState,
@@ -57,12 +70,14 @@ export async function signup(
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       // handle_new_user() reads full_name + country + role from this metadata.
       data: { full_name: fullName, country, role },
+      // Where the confirmation link lands (see app/auth/confirm/route.ts).
+      emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/welcome`,
     },
   });
 
@@ -70,9 +85,21 @@ export async function signup(
     return { error: error.message };
   }
 
+  // SECURITY (pentest PT3-02): with email confirmation enabled, signUp does not
+  // return a session — the account is inactive until the emailed link is clicked.
+  // Don't redirect into the app (the user has no session and would just bounce to
+  // /login); show a "check your email" notice instead.
+  if (!data.session) {
+    return {
+      notice:
+        `Almost there — we've emailed a confirmation link to ${email}. ` +
+        `Open it to activate your account, then sign in.`,
+    };
+  }
+
   revalidatePath("/", "layout");
-  // New members land on the welcome page first, which walks them through
-  // setting up their profile before they enter the platform.
+  // (Only reached if email confirmation is disabled.) New members land on the
+  // welcome page first, which walks them through setting up their profile.
   redirect("/welcome");
 }
 
@@ -104,18 +131,34 @@ export async function adminSignup(
 
   // SECURITY (BUG-004): do NOT pre-verify the code here — that required exposing
   // verify_admin_code() to the anonymous role, giving the whole internet an
-  // unthrottled true/false oracle to brute-force the code against. Instead we
-  // create the account first, then redeem: redeem_admin_access() runs as an
-  // authenticated caller and validates the code itself (SECURITY DEFINER). A
-  // wrong code therefore just leaves an ordinary member account, never an admin.
-  const { error } = await supabase.auth.signUp({
+  // unthrottled true/false oracle to brute-force the code against. The account is
+  // created as an ordinary member; the admin role is only granted by redeeming
+  // the code (redeem_admin_access, SECURITY DEFINER) once the caller has a
+  // session. A wrong code therefore never yields an admin account.
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { full_name: fullName, role: "admin" } },
+    options: {
+      data: { full_name: fullName },
+      // After confirming, land back here (now signed in) to enter the code.
+      emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/admin-access`,
+    },
   });
   if (error) return { error: error.message };
 
-  // Now that the session is active, redeem the code to grant the admin role.
+  // SECURITY (pentest PT3-02): with email confirmation enabled there is no
+  // session yet, so we cannot redeem the code now (redeem_admin_access requires
+  // auth.uid()). Tell the admin to confirm + sign in, then redeem here.
+  if (!data.session) {
+    return {
+      notice:
+        `Admin account created. We've emailed a confirmation link to ${email}. ` +
+        `Open it, then return to this page — signed in — to enter your access ` +
+        `code and activate admin access.`,
+    };
+  }
+
+  // (Only reached if email confirmation is disabled.) Redeem immediately.
   const { data: redeemed, error: redeemErr } = await supabase.rpc(
     "redeem_admin_access",
     { p_code: code },
@@ -128,6 +171,37 @@ export async function adminSignup(
         "regular member — sign in and contact the platform owner for admin access.",
     };
   }
+
+  revalidatePath("/", "layout");
+  redirect("/");
+}
+
+/**
+ * Redeem an admin access code as an already-signed-in user. Used on the
+ * /admin-access page after a new admin has confirmed their email and signed in
+ * (email confirmation means the code can't be redeemed during signup). The
+ * redeem_admin_access RPC (SECURITY DEFINER) validates the code as the caller.
+ */
+export async function redeemAdminCode(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const code = String(formData.get("code") ?? "").trim();
+  if (!code) return { error: "Please enter your admin access code." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { error: "Please sign in first, then enter your access code." };
+  }
+
+  const { data: redeemed, error } = await supabase.rpc("redeem_admin_access", {
+    p_code: code,
+  });
+  if (error) return { error: error.message };
+  if (!redeemed) return { error: "That admin access code is not valid." };
 
   revalidatePath("/", "layout");
   redirect("/");

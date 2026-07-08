@@ -200,6 +200,12 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
             </div>
           )}
 
+          {state?.notice && (
+            <div style={{ fontSize: 13.5, color: "#1E6B4E", background: "#E8F6EF", border: "1px solid #B6E3CD", padding: "12px 14px", borderRadius: radius.sm, margin: "14px 0 0", lineHeight: 1.5 }}>
+              {state.notice}
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={pending}
