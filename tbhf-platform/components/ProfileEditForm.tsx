@@ -55,7 +55,7 @@ function Card({ title, eye, children }: { title: string; eye?: React.ReactNode; 
   );
 }
 function Row({ children, cols = 2 }: { children: React.ReactNode; cols?: number }) {
-  return <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 14, marginBottom: 14 }}>{children}</div>;
+  return <div className="field-grid" style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 14, marginBottom: 14 }}>{children}</div>;
 }
 function Field({ label, eye, children }: { label: string; eye?: React.ReactNode; children: React.ReactNode }) {
   return (

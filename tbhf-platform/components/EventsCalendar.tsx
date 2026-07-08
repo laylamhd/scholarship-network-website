@@ -272,6 +272,9 @@ function MonthGrid({
         </div>
       </div>
 
+      {/* Grid scrolls horizontally on narrow screens so all 7 columns stay legible */}
+      <div className="scr" style={{ overflowX: "auto" }}>
+      <div style={{ minWidth: 560 }}>
       {/* Weekday header */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", borderBottom: `1px solid ${colors.border}`, background: colors.bg }}>
         {WEEKDAYS.map((w) => (
@@ -329,6 +332,8 @@ function MonthGrid({
             </div>
           );
         })}
+      </div>
+      </div>
       </div>
     </div>
   );

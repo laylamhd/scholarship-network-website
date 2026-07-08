@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/profiles";
-import { listGroups, GROUP_CATEGORIES, categoryLabel } from "@/lib/groups";
+import { listGroups, categoryLabel } from "@/lib/groups";
 import GroupJoinButton from "@/components/GroupJoinButton";
+import GroupCategoryFilter from "@/components/GroupCategoryFilter";
 import { colors, radius, shadow } from "@/lib/theme";
 
 export default async function GroupsPage({
@@ -16,8 +17,6 @@ export default async function GroupsPage({
   const { q, cat } = await searchParams;
   const groups = await listGroups(q, cat);
 
-  const filters = [{ value: "", label: "All" }, ...GROUP_CATEGORIES];
-
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "32px", width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 6 }}>
@@ -28,28 +27,18 @@ export default async function GroupsPage({
       </div>
 
       {/* Search + category filter */}
-      <form action="/groups" method="get" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 22 }}>
-        <input
-          name="q"
-          defaultValue={q ?? ""}
-          placeholder="Search groups…"
-          style={{ flex: "1 1 280px", maxWidth: 420, padding: "12px 16px", fontSize: 14.5, color: colors.ink, background: "#fff", border: `1.5px solid ${colors.borderStrong}`, borderRadius: radius.pill, outline: "none" }}
-        />
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {filters.map((f) => {
-            const active = (cat ?? "") === f.value;
-            return (
-              <Link
-                key={f.value || "all"}
-                href={f.value ? `/groups?cat=${f.value}` : "/groups"}
-                style={{ padding: "9px 14px", borderRadius: radius.pill, fontSize: 13, fontWeight: 700, background: active ? colors.brand : "#fff", color: active ? "#fff" : colors.inkMuted, border: `1.5px solid ${active ? colors.brand : colors.borderStrong}` }}
-              >
-                {f.label}
-              </Link>
-            );
-          })}
-        </div>
-      </form>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 22 }}>
+        <form action="/groups" method="get" style={{ flex: "1 1 280px", maxWidth: 420, display: "flex" }}>
+          {cat && <input type="hidden" name="cat" value={cat} />}
+          <input
+            name="q"
+            defaultValue={q ?? ""}
+            placeholder="Search groups…"
+            style={{ width: "100%", padding: "12px 16px", fontSize: 14.5, color: colors.ink, background: "#fff", border: `1.5px solid ${colors.borderStrong}`, borderRadius: radius.pill, outline: "none" }}
+          />
+        </form>
+        <GroupCategoryFilter selected={cat} query={q} />
+      </div>
 
       {groups.length === 0 ? (
         <div style={{ background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: "40px", textAlign: "center", color: colors.inkFaint, fontSize: 14.5 }}>
