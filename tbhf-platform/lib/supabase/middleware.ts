@@ -48,8 +48,11 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Already signed in and visiting an auth page -> send to home
-  if (user && isAuthRoute) {
+  // Already signed in and visiting login/signup -> send to home. /admin-access is
+  // deliberately excluded: a just-confirmed member returns there (signed in) to
+  // enter their access code and redeem the admin role (pentest PT3-02).
+  const isLoginOrSignup = path.startsWith("/login") || path.startsWith("/signup");
+  if (user && isLoginOrSignup) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
