@@ -57,7 +57,7 @@ export default async function SettingsPage() {
 
       {/* Account overview */}
       <Section icon="user" title="Account" subtitle="Your account at a glance.">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14 }}>
           <Stat label="Signed in as" value={profile?.full_name || "—"} />
           <Stat label="Role" value={roleLabel} />
           <Stat label="Member since" value={memberSince ?? "—"} />
@@ -107,7 +107,7 @@ export default async function SettingsPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: "12px 14px" }}>
+    <div style={{ minWidth: 0, background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: radius.md, padding: "12px 14px" }}>
       <div style={{ fontSize: 11.5, fontWeight: 700, color: colors.inkFaint, textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</div>
       <div style={{ fontSize: 14.5, fontWeight: 700, color: colors.ink, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{value}</div>
     </div>

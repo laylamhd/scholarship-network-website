@@ -256,6 +256,14 @@ a {
   }
 }
 
+/* Profile edit — multi-column field rows collapse to a single column on phones
+   (prevents inputs/pills overflowing the viewport). */
+@media (max-width: 640px) {
+  .field-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 /* Notification welcome-back popup */
 @keyframes tbhfFade {
   from { opacity: 0; }

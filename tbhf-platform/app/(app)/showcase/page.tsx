@@ -2,8 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser, getMyRole } from "@/lib/profiles";
 import { listShowcase, getShowcaseTypeCounts, type ShowcaseItem } from "@/lib/showcase";
-import { SHOWCASE_TYPES, showcaseTypePlural, showcaseTypeIcon, isImageType, isPdf, PDF_COVER_HASH } from "@/lib/showcaseTypes";
+import { showcaseTypePlural, showcaseTypeIcon, isImageType, isPdf, PDF_COVER_HASH } from "@/lib/showcaseTypes";
 import { Icon } from "@/components/Icon";
+import ShowcaseTypeFilter from "@/components/ShowcaseTypeFilter";
 import { colors, radius, shadow, gradients } from "@/lib/theme";
 
 // Deterministic varied heights for the masonry (so the grid feels Pinterest-like).
@@ -82,7 +83,6 @@ export default async function ShowcasePage({
   const { type, q } = await searchParams;
   const [role, items, counts] = await Promise.all([getMyRole(), listShowcase({ type, search: q }), getShowcaseTypeCounts()]);
   const isAdmin = role === "admin";
-  const total = Array.from(counts.values()).reduce((a, b) => a + b, 0);
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "32px", width: "100%" }}>
@@ -107,15 +107,9 @@ export default async function ShowcasePage({
         <input name="q" defaultValue={q ?? ""} placeholder="Search the showcase…" style={{ width: "100%", padding: "12px 16px", fontSize: 14.5, color: colors.ink, background: "#fff", border: `1.5px solid ${colors.borderStrong}`, borderRadius: radius.pill, outline: "none" }} />
       </form>
 
-      {/* Type filter chips */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 26 }}>
-        <Link href={q ? `/showcase?q=${encodeURIComponent(q)}` : "/showcase"} style={chip(!type)}>All {total ? <span style={{ opacity: 0.7 }}>{total}</span> : null}</Link>
-        {SHOWCASE_TYPES.map((t) => (
-          <Link key={t} href={`/showcase?type=${encodeURIComponent(t)}${q ? `&q=${encodeURIComponent(q)}` : ""}`} style={chip(type === t)}>
-            <Icon name={showcaseTypeIcon(t)} size={14} /> {showcaseTypePlural(t)}
-            {counts.get(t) ? <span style={{ opacity: 0.7 }}>{counts.get(t)}</span> : null}
-          </Link>
-        ))}
+      {/* Type filter */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 26 }}>
+        <ShowcaseTypeFilter selected={type} counts={counts} query={q} />
       </div>
 
       {items.length === 0 ? (
@@ -133,14 +127,4 @@ export default async function ShowcasePage({
       )}
     </div>
   );
-}
-
-function chip(active: boolean): React.CSSProperties {
-  return {
-    display: "inline-flex", alignItems: "center", gap: 6,
-    background: active ? colors.brand : "#fff",
-    color: active ? "#fff" : colors.inkMuted,
-    border: `1.5px solid ${active ? colors.brand : colors.borderStrong}`,
-    borderRadius: radius.pill, padding: "8px 15px", fontSize: 13.5, fontWeight: 600,
-  };
 }
