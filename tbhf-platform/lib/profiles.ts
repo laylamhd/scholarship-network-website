@@ -35,18 +35,17 @@ export async function getEnumValues(enumType: string): Promise<string[]> {
 export async function getFullProfile(id: string): Promise<FullProfile | null> {
   const supabase = await createClient();
 
-  // SECURITY (BUG-010): never read the `email` column here. Member email is not
-  // shown on profile pages (the owner's own email comes from the auth session in
-  // Settings), and the DB revokes column SELECT on profiles.email from clients so
-  // it can't be scraped via REST. Select every profile column EXCEPT email — keep
-  // this list in sync with the grant in supabase/security_hardening.sql.
-  const { data: profile, error } = await supabase
-    .from("profiles")
-    .select(
-      "id, full_name, avatar_url, role, country, nationality, gender, bio, profile_visibility, is_active, created_at, updated_at, onboarded_at, date_of_birth, phone, city, dashboard_layout, notification_prefs, field_privacy, research_interests, career_aspirations, volunteer_experience",
-    )
-    .eq("id", id)
-    .maybeSingle();
+  // SECURITY (BUG-010 + pentest PT3-01): do not read the profiles table directly.
+  // `email` is owner/admin-only, and the personal fields (phone, date_of_birth,
+  // city, gender, bio, aspirations, etc.) are no longer granted to the
+  // `authenticated` role — they can't be scraped via REST. get_profile_full()
+  // (SECURITY DEFINER) returns the row with per-field privacy applied: the owner
+  // and admins see everything; other members see a field only when the owner has
+  // not hidden it (profiles.field_privacy). Keep the returned keys in sync with
+  // the jsonb in supabase/phase33_field_privacy.sql and the Profile type.
+  const { data: profile, error } = await supabase.rpc("get_profile_full", {
+    p_id: id,
+  });
 
   if (error) console.error("getFullProfile profile:", error.message);
   if (!profile) return null;
