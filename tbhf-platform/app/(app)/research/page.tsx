@@ -86,7 +86,7 @@ export default async function ResearchPage({
         <div>
           <h1 style={{ fontSize: 30, fontWeight: 800, color: colors.ink, margin: 0, letterSpacing: "-0.01em" }}>Research Hub</h1>
           <p style={{ fontSize: 14.5, color: colors.inkFaint, margin: "6px 0 0", maxWidth: 560, lineHeight: 1.5 }}>
-            Publish research summaries, find collaborators, discover opportunities and collect data with surveys.
+            Publish research summaries, find collaborators and collect data with surveys.
           </p>
         </div>
         {surveysView ? (

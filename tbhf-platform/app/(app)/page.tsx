@@ -32,8 +32,8 @@ import { colors, radius, shadow, gradients } from "@/lib/theme";
 /** One inline stat shown in the hero strip. */
 function HeroStat({ value, label }: { value: number | string; label: string }) {
   return (
-    <div style={{ background: "rgba(255,255,255,.16)", borderRadius: radius.md, padding: "12px 18px", minWidth: 104 }}>
-      <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{value}</div>
+    <div className="hero-stat" style={{ background: "rgba(255,255,255,.16)", borderRadius: radius.md, padding: "12px 18px", minWidth: 104 }}>
+      <div className="hero-stat-value" style={{ fontSize: 24, fontWeight: 800, lineHeight: 1 }}>{value}</div>
       <div style={{ fontSize: 12.5, fontWeight: 600, opacity: 0.92, marginTop: 5 }}>{label}</div>
     </div>
   );
@@ -153,7 +153,7 @@ export default async function DashboardPage({
           <div>
             <div style={{ fontSize: 30, fontWeight: 700 }}>Welcome back, {firstName}</div>
           </div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <div className="hero-stats" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
             <HeroStat value={stats.followers} label="Followers" />
             <HeroStat value={mentorCount} label="My mentors" />
             <HeroStat value={stats.following} label="Following" />

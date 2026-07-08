@@ -115,7 +115,14 @@ export default function TopBar({
   const [open, setOpen] = useState(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const onMessages = pathname.startsWith("/messages");
+  const onNotifs = pathname.startsWith("/notifications");
+  const onProfile = pathname.startsWith("/profile");
+
   function show() {
+    // Already on the notifications page — tapping/hovering the bell shouldn't
+    // pop the preview panel on top of the full list.
+    if (onNotifs) return;
     if (closeTimer.current) clearTimeout(closeTimer.current);
     setOpen(true);
   }
@@ -123,10 +130,6 @@ export default function TopBar({
     if (closeTimer.current) clearTimeout(closeTimer.current);
     closeTimer.current = setTimeout(() => setOpen(false), 140);
   }
-
-  const onMessages = pathname.startsWith("/messages");
-  const onNotifs = pathname.startsWith("/notifications");
-  const onProfile = pathname.startsWith("/profile");
 
   return (
     <header
@@ -162,8 +165,9 @@ export default function TopBar({
           <Badge count={notifUnread} />
         </Link>
 
-        {open && (
+        {open && !onNotifs && (
           <div
+            className="notif-dropdown"
             style={{
               position: "absolute",
               top: "calc(100% + 8px)",

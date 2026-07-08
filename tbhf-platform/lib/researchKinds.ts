@@ -1,7 +1,7 @@
 // Client-safe (no server imports): shared by the form, pages and lib.
 import type { IconName } from "@/components/Icon";
 
-export const RESEARCH_KINDS = ["Research summary", "Opportunity"] as const;
+export const RESEARCH_KINDS = ["Research summary"] as const;
 export type ResearchKind = (typeof RESEARCH_KINDS)[number];
 
 export function researchKindIcon(kind: string): IconName {
