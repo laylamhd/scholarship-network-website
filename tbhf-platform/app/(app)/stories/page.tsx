@@ -104,23 +104,25 @@ export default async function StoriesPage({
   const mineOnly = mine === "1";
   const following = !mineOnly && tab === "following";
 
-  const counts = await getStoryCategoryCounts();
-  const followingIds = following ? Array.from(await getFollowingIds(user.id)) : undefined;
-
-  const stories = await listStories({
-    userId: user.id,
-    category: cat,
-    search: q,
-    mineOnly,
-    authorIn: followingIds,
-  });
-
-  // Show a lead story only on the clean Discover landing. The hero is the
-  // single most-viewed story over the past week ("Most popular this week");
-  // if nobody has read anything yet this week, fall back to a featured/latest.
+  // Show a lead story only on the clean Discover landing (known from the URL,
+  // before any query). The hero is the single most-viewed story over the past
+  // week; if nobody has read anything this week, fall back to a featured/latest.
   const isLanding = !mineOnly && !following && !cat && !q?.trim();
-  const popular = isLanding ? await getMostPopularThisWeek(user.id) : null;
-  const featured = isLanding && !popular ? await listStories({ userId: user.id, featuredOnly: true }) : [];
+
+  // First wave: everything that doesn't depend on another query's result.
+  const [counts, followingSet, popular] = await Promise.all([
+    getStoryCategoryCounts(),
+    following ? getFollowingIds(user.id) : Promise.resolve(null),
+    isLanding ? getMostPopularThisWeek(user.id) : Promise.resolve(null),
+  ]);
+  const followingIds = followingSet ? Array.from(followingSet) : undefined;
+
+  // Second wave: the feed (needs followingIds) and the featured fallback (needs
+  // to know there's no "popular"), run together.
+  const [stories, featured] = await Promise.all([
+    listStories({ userId: user.id, category: cat, search: q, mineOnly, authorIn: followingIds }),
+    isLanding && !popular ? listStories({ userId: user.id, featuredOnly: true }) : Promise.resolve([]),
+  ]);
   const lead = isLanding ? (popular ?? featured[0] ?? stories[0] ?? null) : null;
   const feed = lead ? stories.filter((s) => s.id !== lead.id) : stories;
 

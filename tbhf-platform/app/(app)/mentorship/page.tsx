@@ -63,19 +63,19 @@ export default async function MentorshipPage({
   const role = await getMyRole();
   const isAlumni = role === "alumni";
 
-  const mine = await getMyMentorships();
-  const incoming = mine.filter((m) => m.role === "mentor" && m.status === "pending");
-  const active = mine.filter((m) => m.status === "active");
-  const sentPending = mine.filter((m) => m.role === "mentee" && m.status === "pending");
-
   // Student-only filtered views ("Requested" / "My mentors" buttons).
   const studentView = !isAlumni && (view === "requested" || view === "accepted") ? view : null;
 
-  // Only query the directory when a student is browsing (not in a filtered view).
-  const mentors = !isAlumni && !studentView ? await listMentors(q) : [];
-  const availability = isAlumni
-    ? await getMyMentorAvailability(user.id)
-    : { willing: false, topics: null };
+  // These three are independent — fetch them in one round trip instead of three.
+  // The directory is only queried when a student is browsing (not a filtered view).
+  const [mine, mentors, availability] = await Promise.all([
+    getMyMentorships(),
+    !isAlumni && !studentView ? listMentors(q) : Promise.resolve<MentorCard[]>([]),
+    isAlumni ? getMyMentorAvailability(user.id) : Promise.resolve({ willing: false, topics: null }),
+  ]);
+  const incoming = mine.filter((m) => m.role === "mentor" && m.status === "pending");
+  const active = mine.filter((m) => m.status === "active");
+  const sentPending = mine.filter((m) => m.role === "mentee" && m.status === "pending");
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "32px", width: "100%" }}>
