@@ -16,14 +16,17 @@ export default async function CommunityPage({
   if (!user) redirect("/login");
 
   const role = await getMyRole();
-  // Moderators with the communities capability curate communities like admins.
-  const caps = role === "admin" ? [] : await getMyCapabilities();
-  const isAdmin = role === "admin" || caps.includes("manage_communities");
   // Only full admins may CREATE a community (moderators curate existing ones).
   const canCreate = role === "admin";
 
   const { q } = await searchParams;
-  const communities = await listCommunities(q);
+  // Capabilities and the community list are independent — one round trip, not two.
+  // Moderators with the communities capability curate communities like admins.
+  const [caps, communities] = await Promise.all([
+    role === "admin" ? Promise.resolve([]) : getMyCapabilities(),
+    listCommunities(q),
+  ]);
+  const isAdmin = role === "admin" || caps.includes("manage_communities");
 
   return (
     <div style={{ maxWidth: 1180, margin: "0 auto", padding: "32px", width: "100%" }}>
