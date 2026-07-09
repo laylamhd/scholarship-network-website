@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
+  getMyBasicProfile,
   getMyFullProfile,
   getDashboardStats,
   profileCompletion,
@@ -44,13 +45,16 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ q?: string; kind?: string; mentors?: string; tab?: string; view?: string }>;
 }) {
-  const data = await getMyFullProfile();
-  if (!data) redirect("/login");
+  // Only the id + role are needed to branch the page. This is already fetched by
+  // the layout in this same request, so React cache() serves it for free here —
+  // no extra query, and the heavy full-profile fetch no longer blocks the branch.
+  const me = await getMyBasicProfile();
+  if (!me) redirect("/login");
 
-  const firstName = (data.profile.full_name || "Scholar").split(/\s+/)[0];
+  const firstName = (me.full_name || "Scholar").split(/\s+/)[0];
 
   // Admins get the management module as their Home page.
-  if (data.profile.role === "admin") {
+  if (me.role === "admin") {
     const [overview, demographics, engagement, members, announcements, pending, moderators] = await Promise.all([
       getAdminOverview(),
       getAdminDemographics(),
@@ -70,14 +74,13 @@ export default async function DashboardPage({
         announcements={announcements}
         pending={pending}
         moderators={moderators}
-        currentUserId={data.profile.id}
+        currentUserId={me.id}
       />
     );
   }
 
-  const userId = data.profile.id;
-  const completion = profileCompletion(data);
-  const isAlumni = data.profile.role === "alumni";
+  const userId = me.id;
+  const isAlumni = me.role === "alumni";
 
   // Alumni Network lives on the alumni Home dashboard (its own sidebar tab was removed),
   // split into a "Dashboard" tab and a "My network" tab (?tab=network). Inside My network,
@@ -88,9 +91,11 @@ export default async function DashboardPage({
   const mentorsOnly = mentors === "1";
   const kindFilter = ALUMNI_OFFER_KINDS.includes((kind ?? "") as (typeof ALUMNI_OFFER_KINDS)[number]) ? kind : undefined;
 
-  // Hero stats + everything the customizable widgets might show, in parallel.
-  const [stats, myAnnouncements, layout, eventsRes, stories, showcase, opportunities, mentorships] =
+  // Full profile (only needed for the completion nudge) fetched in the SAME
+  // parallel wave as the hero stats + widget data, instead of blocking them.
+  const [data, stats, myAnnouncements, layout, eventsRes, stories, showcase, opportunities, mentorships] =
     await Promise.all([
+      getMyFullProfile(),
       getDashboardStats(userId),
       getMyAnnouncements(),
       getDashboardLayout(),
@@ -100,6 +105,7 @@ export default async function DashboardPage({
       listOpportunities({ userId }),
       getMyMentorships(),
     ]);
+  const completion = data ? profileCompletion(data) : 100;
 
   const activeMentorships = mentorships.filter((m) => m.status === "active");
   const mentorCount = activeMentorships.filter((m) => m.role === "mentee").length;
