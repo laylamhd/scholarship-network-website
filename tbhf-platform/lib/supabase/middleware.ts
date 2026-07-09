@@ -29,10 +29,16 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  // IMPORTANT: do not run code between createServerClient and getUser().
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // IMPORTANT: do not run code between createServerClient and the auth call.
+  // getClaims() verifies the session JWT's signature locally (the project uses an
+  // asymmetric ES256 signing key), avoiding the ~185ms network round trip that
+  // getUser() makes on every request. It still refreshes an about-to-expire
+  // session (writing new cookies via setAll above), and forged tokens are
+  // rejected. A signed-out token remains accepted for navigation until it
+  // expires — the same signature-based check the database RLS already applies to
+  // every query, so this doesn't widen data access.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const user = claimsData?.claims ?? null;
 
   const path = request.nextUrl.pathname;
   const isAuthRoute =
