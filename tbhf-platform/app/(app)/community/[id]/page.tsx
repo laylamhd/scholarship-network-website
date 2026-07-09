@@ -185,14 +185,18 @@ export default async function CommunityDetailPage({
             { key: "discussion", label: "Discussion", panel: discussionPanel },
             {
               key: "content",
-              // Stack each word so this long label stays narrow and sits beside "Discussion".
+              // One line on desktop; on phones each word stacks (via CSS) so the
+              // label stays narrow enough to sit beside "Discussion".
               label: (
-                <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 1.15 }}>
-                  <span>Content</span>
-                  <span>by</span>
-                  <span>community</span>
-                  <span>members</span>
-                </span>
+                <>
+                  <span className="tab-oneword">Content by community members</span>
+                  <span className="tab-stacked">
+                    <span style={{ display: "block" }}>Content</span>
+                    <span style={{ display: "block" }}>by</span>
+                    <span style={{ display: "block" }}>community</span>
+                    <span style={{ display: "block" }}>members</span>
+                  </span>
+                </>
               ),
               panel: contentPanel,
             },
