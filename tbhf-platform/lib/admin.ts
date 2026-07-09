@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { Moderator, ModeratorCapability } from "@/lib/moderators";
 
@@ -133,12 +134,12 @@ export async function getPendingItems(entity: string): Promise<PendingItem[]> {
 /** The capabilities the CURRENT user holds. Admins get all four; moderators get
  *  their granted set; everyone else gets an empty list. Drives which moderation
  *  controls and tabs the app reveals (the DB enforces the real authorization). */
-export async function getMyCapabilities(): Promise<ModeratorCapability[]> {
+export const getMyCapabilities = cache(async (): Promise<ModeratorCapability[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("my_capabilities");
   if (error) { console.error("my_capabilities:", error.message); return []; }
   return ((data as ModeratorCapability[]) ?? []);
-}
+});
 
 /** Every moderator with their granted capabilities (admin only — RPC-enforced). */
 export async function getModerators(): Promise<Moderator[]> {

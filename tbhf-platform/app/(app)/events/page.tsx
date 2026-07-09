@@ -24,9 +24,8 @@ export default async function EventsPage({
 
   const { tab, type, status, q, cause } = await searchParams;
   const isVol = tab === "volunteering";
-  const role = await getMyRole();
   // Admins and moderators with the events/resources capability both manage events.
-  const caps = role === "admin" ? [] : await getMyCapabilities();
+  const [role, caps] = await Promise.all([getMyRole(), getMyCapabilities()]);
   const isAdmin = role === "admin" || caps.includes("manage_events_resources");
 
   return (

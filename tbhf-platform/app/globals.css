@@ -325,6 +325,18 @@ input[type="datetime-local"] {
   }
 }
 
+/* Route-transition skeleton blocks (app/(app)/loading.tsx) */
+.skel {
+  background: linear-gradient(90deg, #e9f1f5 25%, #f5fafc 45%, #e9f1f5 65%);
+  background-size: 400% 100%;
+  animation: tbhfSkel 1.3s ease infinite;
+  border-radius: 10px;
+}
+@keyframes tbhfSkel {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
 /* Notification welcome-back popup */
 @keyframes tbhfFade {
   from { opacity: 0; }
