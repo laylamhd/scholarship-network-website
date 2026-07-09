@@ -152,7 +152,7 @@ function QuickCreateModal({ date, modes, onClose }: { date: Date; modes: string[
       onClick={onClose}
       style={{ position: "fixed", inset: 0, background: "rgba(33,45,55,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 20 }}
     >
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: radius.lg, boxShadow: shadow.card, width: "100%", maxWidth: 440, padding: "22px 24px" }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: radius.lg, boxShadow: shadow.card, width: "100%", maxWidth: 440, minWidth: 0, padding: "22px 24px", boxSizing: "border-box" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
           <div style={{ fontSize: 17, fontWeight: 800, color: colors.ink }}>New event</div>
           <button type="button" onClick={onClose} aria-label="Close" style={{ background: "none", border: 0, cursor: "pointer", color: colors.inkFaint }}><Icon name="x" size={20} /></button>
@@ -214,7 +214,7 @@ function QuickCreateModal({ date, modes, onClose }: { date: Date; modes: string[
 }
 
 function fieldStyle(): React.CSSProperties {
-  return { width: "100%", padding: "10px 12px", fontSize: 14, color: colors.ink, background: "#fff", border: `1.5px solid ${colors.borderStrong}`, borderRadius: radius.md, outline: "none" };
+  return { width: "100%", minWidth: 0, boxSizing: "border-box", padding: "10px 12px", fontSize: 14, color: colors.ink, background: "#fff", border: `1.5px solid ${colors.borderStrong}`, borderRadius: radius.md, outline: "none" };
 }
 
 function ToggleBtn({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: "calendar" | "book"; label: string }) {
