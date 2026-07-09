@@ -182,8 +182,20 @@ export default async function CommunityDetailPage({
         {/* Main: tabs */}
         <CommunityTabs
           tabs={[
-            { key: "discussion", label: "Discussion", count: community.post_count, panel: discussionPanel },
-            { key: "content", label: "Content by community members", count: content.length, panel: contentPanel },
+            { key: "discussion", label: "Discussion", panel: discussionPanel },
+            {
+              key: "content",
+              // Stack each word so this long label stays narrow and sits beside "Discussion".
+              label: (
+                <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 1.15 }}>
+                  <span>Content</span>
+                  <span>by</span>
+                  <span>community</span>
+                  <span>members</span>
+                </span>
+              ),
+              panel: contentPanel,
+            },
           ]}
         />
 

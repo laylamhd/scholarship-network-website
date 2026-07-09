@@ -8,6 +8,7 @@ import { listProjects, getMyImpact, type ProjectCard } from "@/lib/volunteer";
 import { causeIcon, causeColor, statusLabel } from "@/lib/volunteerCauses";
 import EventsCalendar from "@/components/EventsCalendar";
 import EventTypeFilter from "@/components/EventTypeFilter";
+import VolunteerStatusFilter from "@/components/VolunteerStatusFilter";
 import LogHoursButton from "@/components/LogHoursButton";
 import VolunteerSearch from "@/components/VolunteerSearch";
 import { Icon, type IconName } from "@/components/Icon";
@@ -107,13 +108,6 @@ async function VolunteeringTab({ userId, status, q, cause }: { userId: string; s
 
   const totalHoursStr = impact.totalHours % 1 === 0 ? String(impact.totalHours) : impact.totalHours.toFixed(1);
 
-  const cur: Record<string, string | undefined> = { status, q, cause };
-  const href = (ov: Record<string, string | null>) => {
-    const m = { ...cur, ...ov };
-    const sp = new URLSearchParams({ tab: "volunteering" });
-    (["status", "q", "cause"] as const).forEach((k) => { if (m[k]) sp.set(k, m[k] as string); });
-    return `/events?${sp.toString()}`;
-  };
   const filtered = Boolean(status || q?.trim() || cause);
 
   return (
@@ -137,12 +131,7 @@ async function VolunteeringTab({ userId, status, q, cause }: { userId: string; s
         <h2 style={{ fontSize: 20, fontWeight: 800, color: colors.ink, margin: "0 0 14px" }}>Community projects</h2>
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-          <div style={{ display: "inline-flex", background: "#fff", border: `1.5px solid ${colors.borderStrong}`, borderRadius: radius.pill, padding: 3, flexWrap: "wrap" }}>
-            <Seg href={href({ status: null })} active={!status}>All</Seg>
-            <Seg href={href({ status: "recruiting" })} active={status === "recruiting"}>Recruiting</Seg>
-            <Seg href={href({ status: "ongoing" })} active={status === "ongoing"}>Ongoing</Seg>
-            <Seg href={href({ status: "completed" })} active={status === "completed"}>Completed</Seg>
-          </div>
+          <VolunteerStatusFilter selected={status} query={q} cause={cause} />
         </div>
 
         {filtered && (
@@ -255,13 +244,5 @@ function ImpactStat({ icon, value, label }: { icon: IconName; value: string; lab
         <div style={{ fontSize: 12.5, color: colors.inkFaint, fontWeight: 600, marginTop: 4 }}>{label}</div>
       </div>
     </div>
-  );
-}
-
-function Seg({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
-  return (
-    <Link href={href} style={{ borderRadius: radius.pill, padding: "7px 15px", fontSize: 13, fontWeight: 700, color: active ? "#fff" : colors.inkMuted, background: active ? colors.brand : "transparent" }}>
-      {children}
-    </Link>
   );
 }

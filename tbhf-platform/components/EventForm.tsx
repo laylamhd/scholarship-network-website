@@ -11,7 +11,7 @@ import { colors, radius, shadow } from "@/lib/theme";
 
 const labelStyle: React.CSSProperties = { display: "block", fontSize: 13, fontWeight: 600, color: colors.inkMuted, marginBottom: 7 };
 const inputStyle: React.CSSProperties = {
-  width: "100%", padding: "11px 14px", fontSize: 14.5, color: colors.ink, background: "#fff",
+  width: "100%", minWidth: 0, boxSizing: "border-box", padding: "11px 14px", fontSize: 14.5, color: colors.ink, background: "#fff",
   border: `1.5px solid ${colors.borderStrong}`, borderRadius: radius.md, outline: "none",
 };
 
