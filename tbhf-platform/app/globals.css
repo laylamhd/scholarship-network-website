@@ -264,6 +264,27 @@ a {
   }
 }
 
+/* Native date/time controls on iOS Safari ignore width:100% and render at their
+   intrinsic width, spilling past their field. Neutralising the native appearance
+   makes them honour the field width like every other input. */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Community tab label — full phrase inline on desktop, one word per line only
+   on phones so it stays narrow enough to sit beside "Discussion". */
+.tab-stacked { display: none; }
+@media (max-width: 640px) {
+  .tab-oneword { display: none; }
+  .tab-stacked { display: inline-block; line-height: 1.15; text-align: left; }
+}
+
 /* Notification preview dropdown — the 340px panel is anchored to the right-aligned
    bell, so on a narrow screen its left edge spills off-screen. Pin it to the
    viewport instead so it stays fully visible. */
