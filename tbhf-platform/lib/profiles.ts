@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type {
   AcademicRecord,
@@ -9,14 +10,33 @@ import type {
   VolunteerEntry,
 } from "@/lib/types";
 
-/** The signed-in auth user, or null. */
-export async function getCurrentUser() {
+/** The signed-in auth user, or null. Memoized per request — layout, page and
+ *  helpers all share one auth round trip instead of each paying their own. */
+export const getCurrentUser = cache(async () => {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   return user;
-}
+});
+
+/** Name + role only — for the app shell. Reads the columns still granted to
+ *  `authenticated` (phase33), so it skips the full-profile fan-out that
+ *  get_profile_full + its 8 side queries pay on every navigation. */
+export const getMyBasicProfile = cache(
+  async (): Promise<{ id: string; full_name: string | null; role: string | null } | null> => {
+    const user = await getCurrentUser();
+    if (!user) return null;
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("profiles")
+      .select("full_name, role")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!data) return null;
+    return { id: user.id, full_name: data.full_name ?? null, role: data.role ?? null };
+  },
+);
 
 /** Allowed values for a Postgres enum (used to build dropdowns). */
 export async function getEnumValues(enumType: string): Promise<string[]> {
@@ -132,16 +152,11 @@ export async function isProfileModerator(id: string): Promise<boolean> {
   return data === true;
 }
 
-/** The signed-in user's role (lightweight). */
-export async function getMyRole(): Promise<string | null> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  return (data?.role as string) ?? null;
-}
+/** The signed-in user's role (lightweight, memoized per request). */
+export const getMyRole = cache(async (): Promise<string | null> => {
+  const me = await getMyBasicProfile();
+  return me?.role ?? null;
+});
 
 export type DashboardStats = {
   followers: number;

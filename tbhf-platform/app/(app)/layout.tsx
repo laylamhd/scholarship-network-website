@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import TopBar from "@/components/TopBar";
 import NotificationPopup from "@/components/NotificationPopup";
-import { getMyFullProfile } from "@/lib/profiles";
+import { getMyBasicProfile } from "@/lib/profiles";
 import { getUnreadTotal } from "@/lib/messages";
 import { getUnreadNotificationCount, getMyNotifications } from "@/lib/notifications";
 import { getMyCapabilities } from "@/lib/admin";
@@ -13,12 +13,14 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const data = await getMyFullProfile();
+  // The shell only needs a name and role — not the full profile with its
+  // 8-table fan-out, which every navigation used to pay for.
+  const me = await getMyBasicProfile();
   // Proxy already guards this, but be defensive.
-  if (!data) redirect("/login");
+  if (!me) redirect("/login");
 
-  const name = data.profile.full_name?.trim() || "Your profile";
-  const isAdmin = data.profile.role === "admin";
+  const name = me.full_name?.trim() || "Your profile";
+  const isAdmin = me.role === "admin";
   const [unread, notifUnread, recent, caps] = await Promise.all([
     getUnreadTotal(),
     getUnreadNotificationCount(),
