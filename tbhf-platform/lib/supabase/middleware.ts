@@ -103,6 +103,7 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute =
     path.startsWith("/login") ||
     path.startsWith("/signup") ||
+    path.startsWith("/verify-email") ||
     path.startsWith("/admin-access");
   const isPublicAsset = path.startsWith("/auth"); // auth callback handlers
 

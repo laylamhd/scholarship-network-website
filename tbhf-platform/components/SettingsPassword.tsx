@@ -57,7 +57,7 @@ export default function SettingsPassword() {
   return (
     <form action={action} ref={formRef} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <PasswordField name="current_password" label="Current password" />
-      <PasswordField name="new_password" label="New password" placeholder="At least 12 characters" />
+      <PasswordField name="new_password" label="New password" placeholder="At least 8 characters" />
       <PasswordField name="confirm_password" label="Confirm new password" />
 
       {state?.error && <div style={errBox}>{state.error}</div>}

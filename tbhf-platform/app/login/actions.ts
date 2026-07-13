@@ -54,6 +54,7 @@ export async function signup(
   const fullName = String(formData.get("full_name") ?? "").trim();
   const country = String(formData.get("portal") ?? "").trim();
   const roleRaw = String(formData.get("role") ?? "scholar");
+  const confirmPassword = String(formData.get("confirm_password") ?? "");
   // Public signup can only ever be a scholar or alumni. Admin accounts are
   // created through the separate, code-gated /admin-access page.
   const role = roleRaw === "alumni" ? "alumni" : "scholar";
@@ -61,9 +62,11 @@ export async function signup(
   if (!email || !password) {
     return { error: "Please enter your email and password." };
   }
-  // SECURITY (BUG-009): enforce a stronger minimum length.
-  if (password.length < 12) {
-    return { error: "Password must be at least 12 characters." };
+  if (password.length < 8) {
+    return { error: "Password must be at least 8 characters." };
+  }
+  if (password !== confirmPassword) {
+    return { error: "Those passwords don't match." };
   }
   if (!fullName) {
     return { error: "Please enter your full name." };
@@ -95,16 +98,11 @@ export async function signup(
     };
   }
 
-  // SECURITY (pentest PT3-02): with email confirmation enabled, signUp does not
-  // return a session — the account is inactive until the emailed link is clicked.
-  // Don't redirect into the app (the user has no session and would just bounce to
-  // /login); show a "check your email" notice instead.
+  // With email confirmation enabled, signUp returns no session — the account is
+  // inactive until the emailed 6-digit code is verified (OTP). Send the user to a
+  // dedicated page to enter that code, carrying the email along.
   if (!data.session) {
-    return {
-      notice:
-        `Almost there — we've emailed a confirmation link to ${email}. ` +
-        `Open it to activate your account, then sign in.`,
-    };
+    redirect(`/verify-email?email=${encodeURIComponent(email)}`);
   }
 
   revalidatePath("/", "layout");
@@ -131,9 +129,8 @@ export async function adminSignup(
   if (!email || !password) {
     return { error: "Please enter your email and password." };
   }
-  // SECURITY (BUG-009): enforce a stronger minimum length.
-  if (password.length < 12) {
-    return { error: "Password must be at least 12 characters." };
+  if (password.length < 8) {
+    return { error: "Password must be at least 8 characters." };
   }
   if (!fullName) return { error: "Please enter your full name." };
 
@@ -222,6 +219,66 @@ export async function redeemAdminCode(
 
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+/**
+ * Verify the 6-digit signup confirmation code (OTP) entered on /verify-email.
+ * On success the session cookie is set and the user lands on /welcome.
+ */
+export async function verifyEmailOtp(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const email = String(formData.get("email") ?? "").trim();
+  const token = String(formData.get("token") ?? "").trim();
+
+  if (!email) return { error: "Something went wrong — please sign up again." };
+  if (!/^\d{6}$/.test(token)) {
+    return { error: "Enter the 6-digit code from your email." };
+  }
+
+  const supabase = await createClient();
+  // Newer Supabase verifies email OTPs under type 'email'; some projects issue
+  // signup tokens under type 'signup'. Try the documented 'email' first and fall
+  // back to 'signup' so the flow works regardless of the project's template age.
+  let { error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
+  if (error) {
+    const retry = await supabase.auth.verifyOtp({ email, token, type: "signup" });
+    error = retry.error;
+  }
+  if (error) {
+    console.error("verifyEmailOtp:", error.message);
+    return {
+      error:
+        "That code is invalid or has expired. Double-check it, or resend a new code.",
+    };
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/welcome");
+}
+
+/** Resend the signup confirmation code to the pending email address. */
+export async function resendSignupOtp(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { error: "Something went wrong — please sign up again." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: {
+      emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/welcome`,
+    },
+  });
+  if (error) {
+    console.error("resendSignupOtp:", error.message);
+    return { error: "Couldn't resend the code just yet — wait a moment and try again." };
+  }
+  return { notice: "We've sent a fresh code to your email." };
 }
 
 export async function logout() {
