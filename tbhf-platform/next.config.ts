@@ -1,35 +1,14 @@
 import type { NextConfig } from "next";
 
 // SECURITY (BUG-005): baseline security headers. The live deployment previously
-// sent only HSTS, leaving the app frameable (clickjacking) and MIME-sniffable
-// with no CSP. The CSP below is deliberately scoped to what this app actually
-// needs so nothing breaks:
-//   - Supabase REST/Auth over https and Realtime over wss (*.supabase.co)
-//   - inline styles (the UI uses React `style={{…}}` attributes throughout)
-//   - data:/blob: images + Supabase Storage public URLs
-//   - blob: web workers (pdfjs-dist renders PDF thumbnails in a worker)
+// sent only HSTS, leaving the app frameable (clickjacking) and MIME-sniffable.
+// The Content-Security-Policy is NOT here — it moved to the middleware
+// (lib/supabase/middleware.ts) because R3-01 made it nonce-based, and a nonce
+// must be generated fresh per request (static config headers can't do that).
+// The headers below are request-independent, so they stay as static config.
 const isDev = process.env.NODE_ENV === "development";
 
-const csp = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  // Next.js injects a small inline bootstrap/hydration script. 'unsafe-eval' is
-  // added ONLY in development, which Turbopack/HMR needs; production stays strict.
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://*.supabase.co",
-  "font-src 'self' data:",
-  "media-src 'self' https://*.supabase.co",
-  "worker-src 'self' blob:",
-  "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
-  "upgrade-insecure-requests",
-].join("; ");
-
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: csp },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

@@ -1,12 +1,66 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+// SECURITY (R3-01): a nonce-based Content-Security-Policy. The old CSP allowed
+// `script-src 'unsafe-inline'`, which let any HTML-injection foothold run as a
+// script. Here every response instead carries a fresh per-request nonce and
+// `'strict-dynamic'`, so only Next's own nonce-stamped bootstrap script (and the
+// chunks it loads) can execute — inline injected scripts cannot. The CSP is built
+// per request (nonce must be unique), which is why it lives here and not in the
+// static `next.config.ts` headers. `style-src 'unsafe-inline'` is retained: the UI
+// renders React inline `style={{…}}` attributes, which nonces don't cover and
+// which can't execute code (low risk). Applied in production only — dev keeps
+// stock Next responses so Turbopack/HMR is never disturbed.
+const isProd = process.env.NODE_ENV === "production";
+
+function buildCsp(nonce: string): string {
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "form-action 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https://*.supabase.co",
+    "font-src 'self' data:",
+    "media-src 'self' https://*.supabase.co",
+    "worker-src 'self' blob:",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+    "upgrade-insecure-requests",
+  ].join("; ");
+}
+
 /**
  * Refreshes the Supabase auth session on every request and gates protected routes.
- * Called from the root middleware.ts.
+ * Called from the root middleware.ts (proxy.ts).
  */
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  // Fresh nonce per request; forwarded to Next via the request's CSP header so it
+  // stamps the same nonce onto its inline bootstrap/hydration scripts.
+  const nonce = isProd ? btoa(crypto.randomUUID()) : "";
+  const csp = isProd ? buildCsp(nonce) : "";
+
+  // Build the request headers Next will see. Rebuilt again inside setAll below so
+  // a refreshed auth cookie and these CSP/nonce headers are forwarded together.
+  const buildRequestHeaders = () => {
+    const h = new Headers(request.headers);
+    if (isProd) {
+      h.set("x-nonce", nonce);
+      h.set("content-security-policy", csp);
+    }
+    return h;
+  };
+
+  // Set the enforced CSP on whatever response we ultimately return.
+  const withCsp = <T extends NextResponse>(res: T): T => {
+    if (isProd) res.headers.set("content-security-policy", csp);
+    return res;
+  };
+
+  let supabaseResponse = NextResponse.next({
+    request: { headers: buildRequestHeaders() },
+  });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -20,7 +74,12 @@ export async function updateSession(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value),
           );
-          supabaseResponse = NextResponse.next({ request });
+          // buildRequestHeaders() snapshots request.headers *after* the cookie
+          // writes above (RequestCookies is backed by the cookie header), so the
+          // refreshed session and the CSP/nonce headers are forwarded together.
+          supabaseResponse = NextResponse.next({
+            request: { headers: buildRequestHeaders() },
+          });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options),
           );
@@ -51,7 +110,7 @@ export async function updateSession(request: NextRequest) {
   if (!user && !isAuthRoute && !isPublicAsset) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
+    return withCsp(NextResponse.redirect(url));
   }
 
   // Already signed in and visiting login/signup -> send to home. /admin-access is
@@ -61,8 +120,8 @@ export async function updateSession(request: NextRequest) {
   if (user && isLoginOrSignup) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
-    return NextResponse.redirect(url);
+    return withCsp(NextResponse.redirect(url));
   }
 
-  return supabaseResponse;
+  return withCsp(supabaseResponse);
 }
