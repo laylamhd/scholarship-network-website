@@ -9,6 +9,21 @@ import { createClient } from "@/lib/supabase/server";
 // confirm") so the form can show a confirmation state instead of redirecting.
 export type AuthState = { error?: string; notice?: string } | null;
 
+// Map a Supabase signUp error to a user-facing message. Password and email
+// validation errors are safe — and helpful — to surface. Anything else (notably
+// "user already registered") stays generic so we don't leak whether an account
+// exists (R3-05, account enumeration).
+function friendlySignupError(error: { code?: string; message: string }): string {
+  const code = error.code ?? "";
+  if (code === "weak_password" || /password/i.test(error.message)) {
+    return "That password doesn't meet the requirements. Try a longer one with a mix of upper- and lower-case letters, a number and a symbol.";
+  }
+  if (code === "email_address_invalid" || /email/i.test(error.message)) {
+    return "That email address doesn't look valid. Check it and try again.";
+  }
+  return "We couldn't create your account. Double-check your details and try again.";
+}
+
 // Absolute origin of the current request, used to build the email confirmation
 // link's redirect target (emailRedirectTo).
 async function siteOrigin(): Promise<string> {
@@ -85,17 +100,11 @@ export async function signup(
   });
 
   if (error) {
-    // SECURITY (R3-05): don't return the provider's raw error to the client — it
-    // can reveal whether an email is already registered (account enumeration) or
-    // leak rate-limit/internal detail. Log it server-side; show one safe message.
-    // The duplicate-email case is already handled without leaking by the
-    // !data.session notice below (with email confirmation on, Supabase returns a
-    // fake success for an address that already exists).
+    // SECURITY (R3-05): log the raw provider error server-side; show the user a
+    // message that surfaces password/email problems but stays generic for the
+    // enumeration-sensitive "already registered" case (see friendlySignupError).
     console.error("signup failed:", error.message);
-    return {
-      error:
-        "We couldn't create your account. Double-check your email address and try again.",
-    };
+    return { error: friendlySignupError(error) };
   }
 
   // With email confirmation enabled, signUp returns no session — the account is
@@ -151,13 +160,10 @@ export async function adminSignup(
       emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/admin-access`,
     },
   });
-  // SECURITY (R3-05): generic message + server-side log (see signup() above).
+  // SECURITY (R3-05): safe message + server-side log (see signup() above).
   if (error) {
     console.error("admin signup failed:", error.message);
-    return {
-      error:
-        "We couldn't create your account. Double-check your email address and try again.",
-    };
+    return { error: friendlySignupError(error) };
   }
 
   // SECURITY (pentest PT3-02): with email confirmation enabled there is no
