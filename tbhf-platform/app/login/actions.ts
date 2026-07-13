@@ -82,7 +82,17 @@ export async function signup(
   });
 
   if (error) {
-    return { error: error.message };
+    // SECURITY (R3-05): don't return the provider's raw error to the client — it
+    // can reveal whether an email is already registered (account enumeration) or
+    // leak rate-limit/internal detail. Log it server-side; show one safe message.
+    // The duplicate-email case is already handled without leaking by the
+    // !data.session notice below (with email confirmation on, Supabase returns a
+    // fake success for an address that already exists).
+    console.error("signup failed:", error.message);
+    return {
+      error:
+        "We couldn't create your account. Double-check your email address and try again.",
+    };
   }
 
   // SECURITY (pentest PT3-02): with email confirmation enabled, signUp does not
@@ -144,7 +154,14 @@ export async function adminSignup(
       emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/admin-access`,
     },
   });
-  if (error) return { error: error.message };
+  // SECURITY (R3-05): generic message + server-side log (see signup() above).
+  if (error) {
+    console.error("admin signup failed:", error.message);
+    return {
+      error:
+        "We couldn't create your account. Double-check your email address and try again.",
+    };
+  }
 
   // SECURITY (pentest PT3-02): with email confirmation enabled there is no
   // session yet, so we cannot redeem the code now (redeem_admin_access requires

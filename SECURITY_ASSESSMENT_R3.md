@@ -49,17 +49,18 @@ Two dashboard settings from prior rounds remain open: **leaked-password protecti
 
 ### P2 — This iteration
 
-**R3-04 · Migrations are applied by hand (Medium — operational).**
+**R3-04 · Migrations are applied by hand (Medium — operational). — INTERIM done 2026-07-13; full adoption pending.**
 42 phase SQL files plus `security_hardening.sql` are run manually in the SQL editor, in an order the operator has to remember. This *already* produced a real hazard — the deploy-ordering trap where running the SQL before shipping the matching code would break production. Manual application invites drift, skipped steps, and wrong-order mistakes.
-**Plan:** adopt the **Supabase CLI migration workflow** (versioned `supabase/migrations/`, `db push` from CI against staging→prod), so schema changes are ordered, reviewable, and reproducible. Until then, keep a written run-order checklist in the repo.
+**What was done (interim):** added `supabase/RUN_ORDER.md` — the authoritative run order for all 43 files, which are idempotent, the deploy-ordering rule spelled out, and a "when you add a migration" checklist (idempotent + secure-by-default new tables). This removes the from-memory risk immediately.
+**Still recommended:** adopt the **Supabase CLI migration workflow** (versioned `supabase/migrations/`, `db push` from CI staging→prod). Not done here because it needs CLI login + converting existing files to timestamped migrations — a process change for you to green-light, not a blind edit.
 
-**R3-05 · Signup leaks account existence (Low).**
-`signup()` / `adminSignup()` return `error.message` verbatim, which can surface "User already registered" — an enumeration signal that `login()` was already fixed to avoid.
-**Plan:** return a generic "check your email" notice regardless (email confirmation already hides the true state); log the real error server-side only.
+**R3-05 · Signup leaks account existence (Low). — ✅ IMPLEMENTED 2026-07-13.**
+`signup()` / `adminSignup()` returned `error.message` verbatim, which could surface "User already registered" (enumeration) or leak rate-limit/internal detail.
+**What was done:** both now log the provider error server-side and return one generic, non-leaking message ("We couldn't create your account. Double-check your email address and try again."). The duplicate-email case stays handled gracefully by the existing `!data.session` "check your email" notice (email confirmation returns a fake success for an existing address, so no enumeration).
 
-**R3-06 · Middleware accepts a signed-out-but-unexpired token for navigation (Low, by design).**
-`getClaims()` verifies the JWT signature locally (fast) but a revoked/signed-out token still passes middleware until it expires. This is **acceptable** — RLS re-checks every query, so no data leaks — but the window should be small and the boundary documented.
-**Plan:** set a **short access-token TTL** (e.g. 30–60 min) in Supabase Auth; add a one-line note that middleware is a UX gate, not the security boundary (RLS is).
+**R3-06 · Middleware accepts a signed-out-but-unexpired token for navigation (Low, by design). — Dashboard action; no code change.**
+`getClaims()` verifies the JWT signature locally (fast) but a revoked/signed-out token still passes middleware until it expires. This is **acceptable** — RLS re-checks every query, so no data leaks. The middleware already documents that it is a UX gate, not the security boundary (see the comment above the `getClaims()` call).
+**Action for you:** set a **short access-token TTL** (30–60 min) in Supabase Auth → Sessions to shrink the window. No code change needed.
 
 ### P3 — Ongoing habits (see §4)
 
