@@ -222,44 +222,10 @@ export async function redeemAdminCode(
 }
 
 /**
- * Verify the 6-digit signup confirmation code (OTP) entered on /verify-email.
- * On success the session cookie is set and the user lands on /welcome.
+ * Resend the signup confirmation email (the activation link) to the pending
+ * address. Used by the /verify-email page's "resend link" button.
  */
-export async function verifyEmailOtp(
-  _prev: AuthState,
-  formData: FormData,
-): Promise<AuthState> {
-  const email = String(formData.get("email") ?? "").trim();
-  const token = String(formData.get("token") ?? "").trim();
-
-  if (!email) return { error: "Something went wrong — please sign up again." };
-  if (!/^\d{6}$/.test(token)) {
-    return { error: "Enter the 6-digit code from your email." };
-  }
-
-  const supabase = await createClient();
-  // Newer Supabase verifies email OTPs under type 'email'; some projects issue
-  // signup tokens under type 'signup'. Try the documented 'email' first and fall
-  // back to 'signup' so the flow works regardless of the project's template age.
-  let { error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
-  if (error) {
-    const retry = await supabase.auth.verifyOtp({ email, token, type: "signup" });
-    error = retry.error;
-  }
-  if (error) {
-    console.error("verifyEmailOtp:", error.message);
-    return {
-      error:
-        "That code is invalid or has expired. Double-check it, or resend a new code.",
-    };
-  }
-
-  revalidatePath("/", "layout");
-  redirect("/welcome");
-}
-
-/** Resend the signup confirmation code to the pending email address. */
-export async function resendSignupOtp(
+export async function resendConfirmationEmail(
   _prev: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
@@ -275,10 +241,10 @@ export async function resendSignupOtp(
     },
   });
   if (error) {
-    console.error("resendSignupOtp:", error.message);
-    return { error: "Couldn't resend the code just yet — wait a moment and try again." };
+    console.error("resendConfirmationEmail:", error.message);
+    return { error: "Couldn't resend the link just yet — wait a moment and try again." };
   }
-  return { notice: "We've sent a fresh code to your email." };
+  return { notice: "We've sent a fresh confirmation link to your email." };
 }
 
 export async function logout() {
