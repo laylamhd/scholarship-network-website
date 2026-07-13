@@ -56,7 +56,7 @@ export default function VerifyEmailForm({ email }: { email: string }) {
               <strong style={{ color: colors.ink }}>{email}</strong>.
             </p>
             <p style={{ fontSize: 14.5, color: colors.inkMuted, lineHeight: 1.65, margin: "0 0 28px" }}>
-              Open it to activate your account — you&apos;ll be signed in automatically.
+              Open it to activate your account, you&apos;ll be signed in automatically.
             </p>
 
             <div
