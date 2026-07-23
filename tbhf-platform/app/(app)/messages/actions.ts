@@ -45,6 +45,23 @@ export async function markConversationRead(conversationId: string) {
   revalidatePath("/messages");
 }
 
+/** React to a message (phase37). Same emoji toggles off; a new one replaces. */
+export async function reactToMessage(
+  conversationId: string,
+  messageId: string,
+  emoji: string,
+): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("react_to_message", {
+    msg: messageId,
+    em: emoji,
+  });
+  if (error) return { error: error.message };
+
+  revalidatePath(`/messages/${conversationId}`);
+  return {};
+}
+
 /** Hide a message from just my own view ("Delete for me"). */
 export async function deleteMessageForMe(
   conversationId: string,

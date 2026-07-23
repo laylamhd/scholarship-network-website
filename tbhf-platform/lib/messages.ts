@@ -29,6 +29,9 @@ export type OtherParticipant = {
   role: UserRole;
 };
 
+/** One emoji's aggregate on a message (phase37). */
+export type Reaction = { emoji: string; count: number; mine: boolean };
+
 /** Conversations for the current user (other participant + last message + unread). */
 export async function listConversations(): Promise<ConversationListItem[]> {
   const supabase = await createClient();
@@ -51,7 +54,12 @@ export async function getUnreadTotal(): Promise<number> {
 /** A single conversation: the other participant + ordered messages. Null if not a member. */
 export async function getConversation(
   conversationId: string,
-): Promise<{ other: OtherParticipant; messages: Message[]; seenEnabled: boolean } | null> {
+): Promise<{
+  other: OtherParticipant;
+  messages: Message[];
+  seenEnabled: boolean;
+  reactions: Record<string, Reaction[]>;
+} | null> {
   const supabase = await createClient();
 
   const { data: parts, error: partsErr } = await supabase
@@ -79,19 +87,27 @@ export async function getConversation(
     role: "scholar",
   };
 
-  // Messages, my "deleted for me" hides, and whether "Seen" may be shown
-  // (both participants have read receipts on — phase36) are independent.
-  const [{ data: messages }, { data: hidden }, { data: seenData }] = await Promise.all([
-    supabase
-      .from("messages")
-      .select("*")
-      .eq("conversation_id", conversationId)
-      .order("created_at", { ascending: true }),
-    supabase.from("message_deletions").select("message_id"),
-    supabase.rpc("conversation_seen_enabled", { conv: conversationId }),
-  ]);
+  // Messages, my "deleted for me" hides, whether "Seen" may be shown
+  // (both participants have read receipts on — phase36) and the message
+  // reactions (phase37) are all independent — one round trip.
+  const [{ data: messages }, { data: hidden }, { data: seenData }, { data: reactionRows }] =
+    await Promise.all([
+      supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .order("created_at", { ascending: true }),
+      supabase.from("message_deletions").select("message_id"),
+      supabase.rpc("conversation_seen_enabled", { conv: conversationId }),
+      supabase.rpc("list_conversation_reactions", { conv: conversationId }),
+    ]);
   const hiddenIds = new Set((hidden ?? []).map((h) => h.message_id as string));
   const visible = ((messages as Message[]) ?? []).filter((m) => !hiddenIds.has(m.id));
 
-  return { other, messages: visible, seenEnabled: seenData === true };
+  const reactions: Record<string, Reaction[]> = {};
+  for (const r of (reactionRows as { message_id: string; emoji: string; cnt: number; mine: boolean }[]) ?? []) {
+    (reactions[r.message_id] ??= []).push({ emoji: r.emoji, count: Number(r.cnt), mine: r.mine });
+  }
+
+  return { other, messages: visible, seenEnabled: seenData === true, reactions };
 }

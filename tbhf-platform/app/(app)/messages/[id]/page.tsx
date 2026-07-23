@@ -26,7 +26,7 @@ export default async function ConversationPage({
   const convo = await getConversation(id);
   if (!convo) notFound();
 
-  const { other, messages, seenEnabled } = convo;
+  const { other, messages, seenEnabled, reactions } = convo;
 
   return (
     // Fill exactly the viewport minus the 65px top bar so the composer is
@@ -72,6 +72,7 @@ export default async function ConversationPage({
               deletedForAll={m.deleted_for_all}
               readAt={m.read_at}
               showSeen={seenEnabled}
+              reactions={reactions[m.id] ?? []}
             />
           ))
         )}

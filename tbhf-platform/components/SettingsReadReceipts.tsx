@@ -31,7 +31,7 @@ export default function SettingsReadReceipts({ initial }: { initial: boolean }) 
           <div style={{ fontSize: 14.5, fontWeight: 700, color: colors.ink }}>Read receipts</div>
           <div style={{ fontSize: 13, color: colors.inkFaint, marginTop: 2, lineHeight: 1.5 }}>
             When on, people see &ldquo;Seen&rdquo; ticks once you&apos;ve read their messages.
-            Turn this off and you won&apos;t send read receipts — but you won&apos;t see other
+            Turn this off and you won&apos;t send read receipts, but you won&apos;t see other
             people&apos;s either.
           </div>
         </div>

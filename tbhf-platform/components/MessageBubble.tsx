@@ -2,8 +2,13 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteMessageForMe, deleteMessageForEveryone } from "@/app/(app)/messages/actions";
+import { deleteMessageForMe, deleteMessageForEveryone, reactToMessage } from "@/app/(app)/messages/actions";
 import { colors } from "@/lib/theme";
+
+/** The classic WhatsApp reaction set (must match react_to_message in phase37). */
+const REACTION_EMOJI = ["👍", "❤️", "😂", "😮", "😢", "🙏"] as const;
+
+export type BubbleReaction = { emoji: string; count: number; mine: boolean };
 
 function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
@@ -39,6 +44,7 @@ export default function MessageBubble({
   deletedForAll,
   readAt,
   showSeen,
+  reactions,
 }: {
   conversationId: string;
   id: string;
@@ -48,6 +54,7 @@ export default function MessageBubble({
   deletedForAll: boolean;
   readAt: string | null;
   showSeen: boolean;
+  reactions: BubbleReaction[];
 }) {
   const [hover, setHover] = useState(false);
   const [open, setOpen] = useState(false);
@@ -146,6 +153,37 @@ export default function MessageBubble({
             minWidth: 176,
           }}
         >
+          {/* WhatsApp-style quick reactions — same emoji toggles off, a new one replaces */}
+          {!deletedForAll && (
+            <div style={{ display: "flex", gap: 2, padding: "4px 4px 6px", borderBottom: `1px solid ${colors.border}`, marginBottom: 4 }}>
+              {REACTION_EMOJI.map((em) => {
+                const active = reactions.some((r) => r.mine && r.emoji === em);
+                return (
+                  <button
+                    key={em}
+                    type="button"
+                    aria-label={`React ${em}`}
+                    onClick={() => run(() => reactToMessage(conversationId, id, em))}
+                    style={{
+                      width: 30,
+                      height: 30,
+                      border: "none",
+                      borderRadius: 999,
+                      background: active ? colors.tintBlue : "transparent",
+                      fontSize: 17,
+                      lineHeight: 1,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {em}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {canDeleteForEveryone && (
             <button
               type="button"
@@ -162,6 +200,38 @@ export default function MessageBubble({
           >
             Delete for me
           </button>
+        </div>
+      )}
+
+      {/* Reaction badges — WhatsApp-style pills tucked under the bubble.
+          Tapping one toggles/replaces my own reaction with that emoji. */}
+      {reactions.length > 0 && !deletedForAll && (
+        <div style={{ display: "flex", gap: 4, justifyContent: mine ? "flex-end" : "flex-start", marginTop: -6, position: "relative", zIndex: 1, paddingInline: 6 }}>
+          {reactions.map((r) => (
+            <button
+              key={r.emoji}
+              type="button"
+              aria-label={`${r.emoji} ${r.count}`}
+              onClick={() => run(() => reactToMessage(conversationId, id, r.emoji))}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                border: `1px solid ${r.mine ? colors.brand : colors.border}`,
+                background: "#fff",
+                borderRadius: 999,
+                padding: "2px 7px",
+                fontSize: 12.5,
+                lineHeight: 1.4,
+                color: colors.inkMuted,
+                cursor: "pointer",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.10)",
+              }}
+            >
+              <span style={{ fontSize: 13 }}>{r.emoji}</span>
+              {r.count > 1 && <span style={{ fontWeight: 700 }}>{r.count}</span>}
+            </button>
+          ))}
         </div>
       )}
 
