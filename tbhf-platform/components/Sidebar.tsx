@@ -72,6 +72,12 @@ const ICON = {
       <path d="M8.5 13h6M8.5 16.5h6" />
     </>
   ),
+  media: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="M10.5 9.3l4.6 2.7-4.6 2.7z" />
+    </>
+  ),
   events: (
     <>
       <rect x="3.5" y="5" width="17" height="16" rx="2" />
@@ -123,8 +129,8 @@ const items: Item[] = [
   // Mentorship lives inside the Career Center now (a card on /opportunities,
   // like Job / Internship / Fellowship) — it's part of career development.
   { label: "Careers", href: "/opportunities", icon: ICON.careers },
-  { label: "Stories", href: "/stories", icon: ICON.stories },
-  { label: "Showcase", href: "/showcase", icon: ICON.showcase },
+  // Media = Showcase + Stories under one tab (a switcher sits atop both pages).
+  { label: "Media", href: "/showcase", icon: ICON.media },
   { label: "Events & Volunteering", href: "/events", icon: ICON.events },
   { label: "Research", href: "/research", icon: ICON.research },
 ];
@@ -229,7 +235,9 @@ export default function Sidebar({ name, unread = 0, notifUnread = 0, canModerate
               : it.href !== "#" &&
                 (pathname.startsWith(it.href) ||
                   // Mentorship is a Career Center section.
-                  (it.href === "/opportunities" && pathname.startsWith("/mentorship")));
+                  (it.href === "/opportunities" && pathname.startsWith("/mentorship")) ||
+                  // Stories is the Media tab's second page.
+                  (it.href === "/showcase" && pathname.startsWith("/stories")));
           const badgeCount = it.badgeKey === "messages" ? unread : it.badgeKey === "notifications" ? notifUnread : 0;
           const showBadge = badgeCount > 0;
           const inner = (

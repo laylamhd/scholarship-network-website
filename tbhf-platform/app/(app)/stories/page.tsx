@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/profiles";
 import { getFollowingIds } from "@/lib/community";
 import { listStories, getStoryCategoryCounts, getMostPopularThisWeek, type StoryCard } from "@/lib/stories";
 import StoryCategoryFilter from "@/components/StoryCategoryFilter";
+import MediaTabs from "@/components/MediaTabs";
 import { Icon } from "@/components/Icon";
 import { colors, radius, gradients } from "@/lib/theme";
 
@@ -130,6 +131,9 @@ export default async function StoriesPage({
 
   return (
     <div style={{ maxWidth: 940, margin: "0 auto", padding: "32px 28px 48px", width: "100%" }}>
+      {/* Media section switcher (Showcase | Stories) */}
+      <MediaTabs active="stories" />
+
       {/* Masthead */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", paddingBottom: 18, borderBottom: `2px solid ${colors.ink}` }}>
         <div>
