@@ -9,6 +9,21 @@ import { createClient } from "@/lib/supabase/server";
 // confirm") so the form can show a confirmation state instead of redirecting.
 export type AuthState = { error?: string; notice?: string } | null;
 
+// Map a Supabase signUp error to a user-facing message. Password and email
+// validation errors are safe — and helpful — to surface. Anything else (notably
+// "user already registered") stays generic so we don't leak whether an account
+// exists (R3-05, account enumeration).
+function friendlySignupError(error: { code?: string; message: string }): string {
+  const code = error.code ?? "";
+  if (code === "weak_password" || /password/i.test(error.message)) {
+    return "That password doesn't meet the requirements. Try a longer one with a mix of upper- and lower-case letters, a number and a symbol.";
+  }
+  if (code === "email_address_invalid" || /email/i.test(error.message)) {
+    return "That email address doesn't look valid. Check it and try again.";
+  }
+  return "We couldn't create your account. Double-check your details and try again.";
+}
+
 // Absolute origin of the current request, used to build the email confirmation
 // link's redirect target (emailRedirectTo).
 async function siteOrigin(): Promise<string> {
@@ -54,6 +69,7 @@ export async function signup(
   const fullName = String(formData.get("full_name") ?? "").trim();
   const country = String(formData.get("portal") ?? "").trim();
   const roleRaw = String(formData.get("role") ?? "scholar");
+  const confirmPassword = String(formData.get("confirm_password") ?? "");
   // Public signup can only ever be a scholar or alumni. Admin accounts are
   // created through the separate, code-gated /admin-access page.
   const role = roleRaw === "alumni" ? "alumni" : "scholar";
@@ -61,9 +77,11 @@ export async function signup(
   if (!email || !password) {
     return { error: "Please enter your email and password." };
   }
-  // SECURITY (BUG-009): enforce a stronger minimum length.
-  if (password.length < 12) {
-    return { error: "Password must be at least 12 characters." };
+  if (password.length < 8) {
+    return { error: "Password must be at least 8 characters." };
+  }
+  if (password !== confirmPassword) {
+    return { error: "Those passwords don't match." };
   }
   if (!fullName) {
     return { error: "Please enter your full name." };
@@ -82,19 +100,18 @@ export async function signup(
   });
 
   if (error) {
-    return { error: error.message };
+    // SECURITY (R3-05): log the raw provider error server-side; show the user a
+    // message that surfaces password/email problems but stays generic for the
+    // enumeration-sensitive "already registered" case (see friendlySignupError).
+    console.error("signup failed:", error.message);
+    return { error: friendlySignupError(error) };
   }
 
-  // SECURITY (pentest PT3-02): with email confirmation enabled, signUp does not
-  // return a session — the account is inactive until the emailed link is clicked.
-  // Don't redirect into the app (the user has no session and would just bounce to
-  // /login); show a "check your email" notice instead.
+  // With email confirmation enabled, signUp returns no session — the account is
+  // inactive until the emailed 6-digit code is verified (OTP). Send the user to a
+  // dedicated page to enter that code, carrying the email along.
   if (!data.session) {
-    return {
-      notice:
-        `Almost there — we've emailed a confirmation link to ${email}. ` +
-        `Open it to activate your account, then sign in.`,
-    };
+    redirect(`/verify-email?email=${encodeURIComponent(email)}`);
   }
 
   revalidatePath("/", "layout");
@@ -121,9 +138,8 @@ export async function adminSignup(
   if (!email || !password) {
     return { error: "Please enter your email and password." };
   }
-  // SECURITY (BUG-009): enforce a stronger minimum length.
-  if (password.length < 12) {
-    return { error: "Password must be at least 12 characters." };
+  if (password.length < 8) {
+    return { error: "Password must be at least 8 characters." };
   }
   if (!fullName) return { error: "Please enter your full name." };
 
@@ -144,7 +160,11 @@ export async function adminSignup(
       emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/admin-access`,
     },
   });
-  if (error) return { error: error.message };
+  // SECURITY (R3-05): safe message + server-side log (see signup() above).
+  if (error) {
+    console.error("admin signup failed:", error.message);
+    return { error: friendlySignupError(error) };
+  }
 
   // SECURITY (pentest PT3-02): with email confirmation enabled there is no
   // session yet, so we cannot redeem the code now (redeem_admin_access requires
@@ -205,6 +225,32 @@ export async function redeemAdminCode(
 
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+/**
+ * Resend the signup confirmation email (the activation link) to the pending
+ * address. Used by the /verify-email page's "resend link" button.
+ */
+export async function resendConfirmationEmail(
+  _prev: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { error: "Something went wrong — please sign up again." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.resend({
+    type: "signup",
+    email,
+    options: {
+      emailRedirectTo: `${await siteOrigin()}/auth/confirm?next=/welcome`,
+    },
+  });
+  if (error) {
+    console.error("resendConfirmationEmail:", error.message);
+    return { error: "Couldn't resend the link just yet — wait a moment and try again." };
+  }
+  return { notice: "We've sent a fresh confirmation link to your email." };
 }
 
 export async function logout() {
