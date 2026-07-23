@@ -65,14 +65,6 @@ const ICON = {
       <path d="M3 12.5h18" />
     </>
   ),
-  mentorship: (
-    <>
-      <path d="M11 6 8.5 4.5a2 2 0 0 0-2 .1L2.5 7.5v6l2 2" />
-      <path d="M13 6l2.5-1.5a2 2 0 0 1 2 .1l4 2.9v6l-2 2" />
-      <path d="M11 6c-1 0-1.8.4-2.5 1.2L6 10c-.7.8-.6 1.9.2 2.5.7.5 1.6.4 2.2-.2L11 9.5" />
-      <path d="m11 9.5 2.5 2.4c.7.7 1.8.7 2.5 0l.4-.4M13.5 11.9l1.6 1.6c.7.7 1.7.7 2.3 0M15.1 13.5l1 1c.6.6 1.5.6 2 0" />
-    </>
-  ),
   stories: (
     <>
       <path d="M5 4h9l4 4v12H5z" />
@@ -128,8 +120,9 @@ const items: Item[] = [
   { label: "Community", href: "/community", icon: ICON.community },
   { label: "Groups", href: "/groups", icon: ICON.groups },
   { label: "Resources", href: "/resources", icon: ICON.resources },
+  // Mentorship lives inside the Career Center now (a card on /opportunities,
+  // like Job / Internship / Fellowship) — it's part of career development.
   { label: "Careers", href: "/opportunities", icon: ICON.careers },
-  { label: "Mentorship", href: "/mentorship", icon: ICON.mentorship },
   { label: "Stories", href: "/stories", icon: ICON.stories },
   { label: "Showcase", href: "/showcase", icon: ICON.showcase },
   { label: "Events & Volunteering", href: "/events", icon: ICON.events },
@@ -233,7 +226,10 @@ export default function Sidebar({ name, unread = 0, notifUnread = 0, canModerate
           const on =
             it.href === "/"
               ? pathname === "/"
-              : it.href !== "#" && pathname.startsWith(it.href);
+              : it.href !== "#" &&
+                (pathname.startsWith(it.href) ||
+                  // Mentorship is a Career Center section.
+                  (it.href === "/opportunities" && pathname.startsWith("/mentorship")));
           const badgeCount = it.badgeKey === "messages" ? unread : it.badgeKey === "notifications" ? notifUnread : 0;
           const showBadge = badgeCount > 0;
           const inner = (
