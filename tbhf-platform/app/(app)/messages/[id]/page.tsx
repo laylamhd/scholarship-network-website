@@ -6,6 +6,7 @@ import { getConversation } from "@/lib/messages";
 import MessageComposer from "@/components/MessageComposer";
 import MessageBubble from "@/components/MessageBubble";
 import MarkRead from "@/components/MarkRead";
+import ChatScroll from "@/components/ChatScroll";
 import { colors } from "@/lib/theme";
 
 function initials(name: string): string {
@@ -25,14 +26,16 @@ export default async function ConversationPage({
   const convo = await getConversation(id);
   if (!convo) notFound();
 
-  const { other, messages } = convo;
+  const { other, messages, seenEnabled } = convo;
 
   return (
-    <div style={{ maxWidth: 820, margin: "0 auto", padding: "0 32px", width: "100%", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+    // Fill exactly the viewport minus the 65px top bar so the composer is
+    // always on screen; the message list scrolls internally (ChatScroll).
+    <div style={{ maxWidth: 820, margin: "0 auto", padding: "0 32px", width: "100%", height: "calc(100dvh - 65px)", display: "flex", flexDirection: "column" }}>
       <MarkRead conversationId={id} />
 
       {/* Header */}
-      <div style={{ position: "sticky", top: 0, background: colors.bg, paddingTop: 20, paddingBottom: 12, zIndex: 5 }}>
+      <div style={{ background: colors.bg, paddingTop: 16, paddingBottom: 12, borderBottom: `1px solid ${colors.border}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <Link href="/messages" style={{ color: colors.inkMuted, fontSize: 20, fontWeight: 700, lineHeight: 1 }}>‹</Link>
           <Link href={`/scholars/${other.id}`} style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -51,8 +54,8 @@ export default async function ConversationPage({
         </div>
       </div>
 
-      {/* Messages */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 10, padding: "12px 0" }}>
+      {/* Messages — internal scroller pinned to the newest message */}
+      <ChatScroll count={messages.length}>
         {messages.length === 0 ? (
           <div style={{ textAlign: "center", color: colors.inkFaint, fontSize: 14, padding: "40px 0" }}>
             No messages yet — say hello.
@@ -67,13 +70,15 @@ export default async function ConversationPage({
               createdAt={m.created_at}
               mine={m.sender_id === user.id}
               deletedForAll={m.deleted_for_all}
+              readAt={m.read_at}
+              showSeen={seenEnabled}
             />
           ))
         )}
-      </div>
+      </ChatScroll>
 
       <MessageComposer conversationId={id} />
-      <div style={{ height: 16 }} />
+      <div style={{ height: 14, flexShrink: 0 }} />
     </div>
   );
 }

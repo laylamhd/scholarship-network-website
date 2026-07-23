@@ -87,6 +87,20 @@ export async function updateNotificationPrefs(_prev: FormState, formData: FormDa
 }
 
 /**
+ * Toggle read receipts ("Seen") for the member — phase36. WhatsApp semantics:
+ * turning them off means others no longer see when you've read their messages,
+ * and you stop seeing "Seen" on yours too.
+ */
+export async function updateReadReceipts(enabled: boolean): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_my_read_receipts", { enabled });
+  if (error) return { error: error.message };
+
+  revalidatePath("/settings");
+  return {};
+}
+
+/**
  * Permanently delete the signed-in member's account and all their data via the
  * delete_my_account() RPC. Guarded by a typed "DELETE" confirmation and a
  * password re-check so an unlocked, unattended session can't be wiped by
