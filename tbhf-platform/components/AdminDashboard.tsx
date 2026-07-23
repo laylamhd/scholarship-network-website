@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import AdminMemberRow from "@/components/AdminMemberRow";
 import AnnouncementsManager from "@/components/AnnouncementsManager";
 import ContentModeration from "@/components/ContentModeration";
@@ -17,7 +18,7 @@ type Tab = "overview" | "members" | "comms" | "advanced";
 const TABS: { id: Tab; label: string; icon: IconName }[] = [
   { id: "overview", label: "Overview", icon: "monitor" },
   { id: "members", label: "Members", icon: "users" },
-  { id: "comms", label: "Communications", icon: "mail" },
+  { id: "comms", label: "Announcements", icon: "mail" },
   { id: "advanced", label: "Advanced settings", icon: "shield" },
 ];
 
@@ -59,13 +60,14 @@ export default function AdminDashboard({
               padding: "10px 16px", fontSize: 14, fontWeight: 700, color: on ? colors.brandDeep : colors.inkMuted,
               borderRadius: radius.pill, marginBottom: 2,
             }}>
-              <Icon name={t.icon} size={17} />{on && <span>{t.label}</span>}
+              {/* Labels stay visible on every tab — icon-only nav hid what each did. */}
+              <Icon name={t.icon} size={17} /><span>{t.label}</span>
             </button>
           );
         })}
       </div>
 
-      {tab === "overview" && <OverviewTab o={overview} d={demographics} e={engagement} pending={pending} />}
+      {tab === "overview" && <OverviewTab o={overview} d={demographics} e={engagement} pending={pending} onGoTab={setTab} />}
       {tab === "members" && <MembersTab members={members} currentUserId={currentUserId} />}
       {tab === "comms" && <AnnouncementsManager items={announcements} />}
       {tab === "advanced" && <AdminAdvancedSettings members={members} moderators={moderators} currentUserId={currentUserId} />}
@@ -73,24 +75,35 @@ export default function AdminDashboard({
   );
 }
 
-/* ---------------- Overview (stacked: stats + collapsible sections) ---------------- */
-function OverviewTab({ o, d, e, pending }: {
+/* ---------------- Overview (actions first, then stats + collapsible sections) ---------------- */
+function OverviewTab({ o, d, e, pending, onGoTab }: {
   o: AdminOverview | null; d: AdminDemographics | null; e: AdminEngagement | null; pending: PendingCounts | null;
+  onGoTab: (t: Tab) => void;
 }) {
   const [demoOpen, setDemoOpen] = useState(false);
   const [engOpen, setEngOpen] = useState(false);
+  // When set, the Engagement section opens with this entity's review panel
+  // already showing (the key below remounts EngagementTab so it takes effect).
+  const [focusReview, setFocusReview] = useState<{ entity: string; label: string } | null>(null);
   const engRef = useRef<HTMLDivElement>(null);
 
-  const openEngagement = () => {
+  const openReview = (target: { entity: string; label: string } | null) => {
+    setFocusReview(target);
     setEngOpen(true);
     requestAnimationFrame(() => engRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      {/* Overview — pinned on top, always visible */}
-      <Section title="Overview" icon="monitor">
-        <OverviewStats o={o} pending={pending} onReview={openEngagement} />
+      {/* 1 — what needs doing right now */}
+      <AttentionStrip pending={pending} onReview={openReview} />
+
+      {/* 2 — the things an admin can do, as verbs */}
+      <QuickActions onGoTab={onGoTab} />
+
+      {/* 3 — the numbers (still here, no longer the headline) */}
+      <Section title="Platform statistics" icon="monitor">
+        <OverviewStats o={o} />
       </Section>
 
       {/* Demographics — collapsible */}
@@ -101,10 +114,108 @@ function OverviewTab({ o, d, e, pending }: {
       {/* Engagement — collapsible */}
       <div ref={engRef}>
         <Section title="Engagement" icon="sparkle" open={engOpen} onToggle={() => setEngOpen((v) => !v)}>
-          <EngagementTab e={e} pending={pending} />
+          <EngagementTab key={focusReview?.entity ?? "none"} e={e} pending={pending} initialReview={focusReview} />
         </Section>
       </div>
     </div>
+  );
+}
+
+/* The labels/icons for each reviewable content type (mirrors EngagementTab). */
+const PENDING_TYPES: { entity: keyof PendingCounts; label: string; icon: IconName }[] = [
+  { entity: "stories", label: "Stories", icon: "fileText" },
+  { entity: "research_posts", label: "Research posts", icon: "flask" },
+  { entity: "community_projects", label: "Community projects", icon: "heart" },
+  { entity: "showcase_items", label: "Showcase items", icon: "image" },
+  { entity: "events", label: "Events", icon: "calendar" },
+  { entity: "alumni_offers", label: "Alumni offers", icon: "handshake" },
+];
+
+/** "Needs your attention" — pending submissions, one click from review. */
+function AttentionStrip({ pending, onReview }: {
+  pending: PendingCounts | null;
+  onReview: (target: { entity: string; label: string } | null) => void;
+}) {
+  const total = pending?.total ?? 0;
+
+  if (total === 0) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 11, background: "#F1F9F4", border: "1px solid #CBE7D4", borderRadius: radius.lg, padding: "14px 20px" }}>
+        <span style={{ width: 34, height: 34, borderRadius: 9, background: "#0F8F6B18", color: "#0F8F6B", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icon name="check" size={18} />
+        </span>
+        <div style={{ fontSize: 14.5, fontWeight: 700, color: "#1E7E55" }}>
+          You&apos;re all caught up — nothing is waiting for review.
+        </div>
+      </div>
+    );
+  }
+
+  const waiting = PENDING_TYPES.filter((t) => (pending?.[t.entity] ?? 0) > 0);
+  return (
+    <section style={{ background: "#FFF7EC", border: "1.5px solid #F2D49B", borderRadius: radius.lg, padding: "18px 20px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ width: 38, height: 38, borderRadius: 10, background: "#E0922E1c", color: "#E0922E", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <Icon name="clock" size={20} />
+        </span>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: 15.5, fontWeight: 800, color: colors.ink }}>Needs your attention</div>
+          <div style={{ fontSize: 13, color: "#8A6D3B", fontWeight: 600, marginTop: 1 }}>
+            {total} {total === 1 ? "submission is" : "submissions are"} waiting for review.
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+        {waiting.map((t) => (
+          <button
+            key={t.entity}
+            type="button"
+            onClick={() => onReview({ entity: t.entity, label: t.label })}
+            style={{ display: "inline-flex", alignItems: "center", gap: 7, cursor: "pointer", background: "#fff", border: "1.5px solid #F2D49B", borderRadius: radius.pill, padding: "8px 15px", fontSize: 13.5, fontWeight: 700, color: colors.ink }}
+          >
+            <Icon name={t.icon} size={15} />
+            {t.label}
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: "#fff", background: "#E0922E", borderRadius: radius.pill, padding: "2px 8px" }}>
+              {pending?.[t.entity] ?? 0}
+            </span>
+            <span style={{ color: "#E0922E" }}>Review ›</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** Verb-labeled shortcuts to every admin power (tabs + create pages). */
+function QuickActions({ onGoTab }: { onGoTab: (t: Tab) => void }) {
+  const btn: React.CSSProperties = {
+    display: "inline-flex", alignItems: "center", gap: 8, cursor: "pointer",
+    background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.pill,
+    padding: "10px 17px", fontSize: 13.5, fontWeight: 700, color: colors.ink, textDecoration: "none",
+  };
+  const links: { label: string; href: string; icon: IconName }[] = [
+    { label: "Post opportunity", href: "/opportunities/new", icon: "briefcase" },
+    { label: "Create event", href: "/events/new", icon: "calendar" },
+    { label: "Create community", href: "/community/new", icon: "users" },
+    { label: "Add resource", href: "/resources/new", icon: "book" },
+  ];
+  return (
+    <section style={{ background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: "18px 20px" }}>
+      <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", color: colors.inkFaint, marginBottom: 12 }}>Quick actions</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" onClick={() => onGoTab("comms")} className="navitem" style={btn}>
+          <Icon name="mail" size={15} /> Send announcement
+        </button>
+        <button type="button" onClick={() => onGoTab("members")} className="navitem" style={btn}>
+          <Icon name="users" size={15} /> Manage members
+        </button>
+        {links.map((l) => (
+          <Link key={l.href} href={l.href} className="navitem" style={btn}>
+            <Icon name={l.icon} size={15} /> {l.label}
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -146,7 +257,7 @@ function Section({ title, icon, open, onToggle, children }: {
   );
 }
 
-function OverviewStats({ o, pending, onReview }: { o: AdminOverview | null; pending: PendingCounts | null; onReview: () => void }) {
+function OverviewStats({ o }: { o: AdminOverview | null }) {
   if (!o) return <ErrBox />;
   const tiles: { label: string; value: number; icon: IconName; accent: string }[] = [
     { label: "Scholarship recipients", value: o.scholars, icon: "cap", accent: "#11A6D6" },
@@ -158,18 +269,9 @@ function OverviewStats({ o, pending, onReview }: { o: AdminOverview | null; pend
     { label: "New — last 7 days", value: o.new_7d, icon: "sparkle", accent: "#C9508A" },
     { label: "New — last 30 days", value: o.new_30d, icon: "calendar", accent: "#3B7DD8" },
   ];
-  const pendingTotal = pending?.total ?? 0;
+  // Pending reviews moved to the AttentionStrip up top — this grid is pure stats.
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
-      {/* Pending reviews — clickable, jumps to Engagement */}
-      <button type="button" onClick={onReview} style={{ textAlign: "left", cursor: "pointer", background: pendingTotal > 0 ? "#FFF7EC" : "#fff", border: `1.5px solid ${pendingTotal > 0 ? "#F2D49B" : colors.border}`, borderRadius: radius.lg, padding: "20px 22px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <span style={{ width: 40, height: 40, borderRadius: 11, background: "#E0922E1c", color: "#E0922E", display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name="clock" size={21} /></span>
-          {pendingTotal > 0 && <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: "#E0922E", borderRadius: radius.pill, padding: "3px 9px" }}>ACTION</span>}
-        </div>
-        <div style={{ fontSize: 30, fontWeight: 800, color: colors.ink, marginTop: 13 }}>{pendingTotal}</div>
-        <div style={{ fontSize: 13, color: colors.inkFaint, fontWeight: 600, marginTop: 2 }}>Pending reviews{pendingTotal > 0 ? " · review now ›" : ""}</div>
-      </button>
       {tiles.map((t) => (
         <div key={t.label} style={{ background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: "20px 22px" }}>
           <span style={{ width: 40, height: 40, borderRadius: 11, background: `${t.accent}15`, color: t.accent, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon name={t.icon} size={21} /></span>
@@ -291,8 +393,12 @@ function Donut({ rows }: { rows: Breakdown[] }) {
 /* ---------------- Engagement (content + moderation) ---------------- */
 type ContentCard = { entity: string; label: string; value: number; icon: IconName; pending: number };
 
-function EngagementTab({ e, pending }: { e: AdminEngagement | null; pending: PendingCounts | null }) {
-  const [review, setReview] = useState<{ entity: string; label: string } | null>(null);
+function EngagementTab({ e, pending, initialReview }: {
+  e: AdminEngagement | null; pending: PendingCounts | null;
+  initialReview?: { entity: string; label: string } | null;
+}) {
+  // A chip in the AttentionStrip lands here with its review panel pre-opened.
+  const [review, setReview] = useState<{ entity: string; label: string } | null>(initialReview ?? null);
   if (!e) return <ErrBox />;
   const content: ContentCard[] = [
     { entity: "stories", label: "Stories", value: e.stories, icon: "fileText", pending: pending?.stories ?? 0 },
