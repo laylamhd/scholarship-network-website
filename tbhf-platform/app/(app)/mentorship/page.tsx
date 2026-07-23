@@ -79,6 +79,11 @@ export default async function MentorshipPage({
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "32px", width: "100%" }}>
+      {/* Mentorship is a Career Center section (reached from /opportunities). */}
+      <Link href="/opportunities" style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13.5, color: colors.brand, fontWeight: 600, marginBottom: 14 }}>
+        ‹ Career Center
+      </Link>
+
       {/* Hero */}
       <div style={{ background: gradients.hero, borderRadius: radius.lg, padding: "28px 32px", color: "#fff", marginBottom: 26, display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
         <span style={{ width: 54, height: 54, borderRadius: 16, background: "rgba(255,255,255,.18)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>

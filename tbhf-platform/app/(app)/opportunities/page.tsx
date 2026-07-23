@@ -85,6 +85,17 @@ export default async function OpportunitiesPage({
                 </div>
               </Link>
             ))}
+            {/* Mentorship is part of career development — it lives here as a
+                category (like Job / Internship / Fellowship), not a separate tab. */}
+            <Link href="/mentorship" className="card" style={{ background: "#fff", border: `1px solid ${colors.border}`, borderRadius: radius.lg, padding: "20px", display: "block" }}>
+              <div style={{ width: 46, height: 46, borderRadius: 13, background: colors.tintBlue, color: colors.brandDeep, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Icon name="handshake" size={24} />
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: colors.ink, marginTop: 13 }}>Mentorship</div>
+              <div style={{ fontSize: 12.5, color: colors.brandDeep, fontWeight: 700, marginTop: 8 }}>
+                Connect with alumni mentors →
+              </div>
+            </Link>
           </div>
 
           <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
