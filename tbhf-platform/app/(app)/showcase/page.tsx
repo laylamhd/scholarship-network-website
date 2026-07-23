@@ -5,6 +5,7 @@ import { listShowcase, getShowcaseTypeCounts, type ShowcaseItem } from "@/lib/sh
 import { showcaseTypePlural, showcaseTypeIcon, isImageType, isPdf, PDF_COVER_HASH } from "@/lib/showcaseTypes";
 import { Icon } from "@/components/Icon";
 import ShowcaseTypeFilter from "@/components/ShowcaseTypeFilter";
+import MediaTabs from "@/components/MediaTabs";
 import { colors, radius, shadow, gradients } from "@/lib/theme";
 
 // Deterministic varied heights for the masonry (so the grid feels Pinterest-like).
@@ -86,6 +87,9 @@ export default async function ShowcasePage({
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "32px", width: "100%" }}>
+      {/* Media section switcher (Showcase | Stories) */}
+      <MediaTabs active="showcase" />
+
       {/* Hero */}
       <div style={{ background: gradients.hero, borderRadius: radius.lg, padding: "28px 32px", color: "#fff", marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
