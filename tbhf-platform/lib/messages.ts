@@ -51,7 +51,7 @@ export async function getUnreadTotal(): Promise<number> {
 /** A single conversation: the other participant + ordered messages. Null if not a member. */
 export async function getConversation(
   conversationId: string,
-): Promise<{ other: OtherParticipant; messages: Message[] } | null> {
+): Promise<{ other: OtherParticipant; messages: Message[]; seenEnabled: boolean } | null> {
   const supabase = await createClient();
 
   const { data: parts, error: partsErr } = await supabase
@@ -79,18 +79,19 @@ export async function getConversation(
     role: "scholar",
   };
 
-  const { data: messages } = await supabase
-    .from("messages")
-    .select("*")
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
-
-  // Drop messages the current user has "deleted for me".
-  const { data: hidden } = await supabase
-    .from("message_deletions")
-    .select("message_id");
+  // Messages, my "deleted for me" hides, and whether "Seen" may be shown
+  // (both participants have read receipts on — phase36) are independent.
+  const [{ data: messages }, { data: hidden }, { data: seenData }] = await Promise.all([
+    supabase
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true }),
+    supabase.from("message_deletions").select("message_id"),
+    supabase.rpc("conversation_seen_enabled", { conv: conversationId }),
+  ]);
   const hiddenIds = new Set((hidden ?? []).map((h) => h.message_id as string));
   const visible = ((messages as Message[]) ?? []).filter((m) => !hiddenIds.has(m.id));
 
-  return { other, messages: visible };
+  return { other, messages: visible, seenEnabled: seenData === true };
 }

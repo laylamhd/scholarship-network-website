@@ -8,6 +8,7 @@ import { resolveNotifPrefs, type NotifPrefs } from "./prefs";
 import SettingsEmail from "@/components/SettingsEmail";
 import SettingsPassword from "@/components/SettingsPassword";
 import SettingsNotifications from "@/components/SettingsNotifications";
+import SettingsReadReceipts from "@/components/SettingsReadReceipts";
 import SettingsDeleteAccount from "@/components/SettingsDeleteAccount";
 
 export const metadata = { title: "Settings" };
@@ -34,11 +35,16 @@ export default async function SettingsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, full_name, notification_prefs")
-    .eq("id", user.id)
-    .single();
+  // Profile bits and the read-receipts setting (phase36 RPC) are independent.
+  const [{ data: profile }, { data: readReceiptsData }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("role, full_name, notification_prefs")
+      .eq("id", user.id)
+      .single(),
+    supabase.rpc("get_my_read_receipts"),
+  ]);
+  const readReceipts = readReceiptsData !== false; // default on if the RPC is missing
 
   const role = profile?.role ?? "scholar";
   const roleLabel = role === "alumni" ? "Alumni" : role === "admin" ? "Admin" : "Scholar";
@@ -82,6 +88,11 @@ export default async function SettingsPage() {
       {/* Notifications */}
       <Section icon="bell" title="Notifications" subtitle="Pick which updates you'd like to receive.">
         <SettingsNotifications initial={prefs} />
+      </Section>
+
+      {/* Privacy */}
+      <Section icon="eye" title="Privacy" subtitle="Control what others can see about your activity.">
+        <SettingsReadReceipts initial={readReceipts} />
       </Section>
 
       {/* Sign out */}

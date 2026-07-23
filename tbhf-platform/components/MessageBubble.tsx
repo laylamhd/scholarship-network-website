@@ -9,6 +9,27 @@ function fmtTime(iso: string): string {
   return new Date(iso).toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
 }
 
+/** WhatsApp-style double check — grey when sent, blue when seen. */
+function Ticks({ seen }: { seen: boolean }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={seen ? "#34A9E0" : colors.inkFaint}
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ verticalAlign: "-3px", marginInlineStart: 3 }}
+      aria-label={seen ? "Seen" : "Sent"}
+    >
+      <path d="M2.5 12.5 7 17 15.5 8" />
+      <path d="M11 15.5l1.5 1.5L21 8.5" />
+    </svg>
+  );
+}
+
 export default function MessageBubble({
   conversationId,
   id,
@@ -16,6 +37,8 @@ export default function MessageBubble({
   createdAt,
   mine,
   deletedForAll,
+  readAt,
+  showSeen,
 }: {
   conversationId: string;
   id: string;
@@ -23,6 +46,8 @@ export default function MessageBubble({
   createdAt: string;
   mine: boolean;
   deletedForAll: boolean;
+  readAt: string | null;
+  showSeen: boolean;
 }) {
   const [hover, setHover] = useState(false);
   const [open, setOpen] = useState(false);
@@ -142,6 +167,9 @@ export default function MessageBubble({
 
       <div style={{ fontSize: 11, color: colors.inkFaint, marginTop: 3, textAlign: mine ? "right" : "left" }}>
         {fmtTime(createdAt)}
+        {/* Read receipt on my own messages: blue "Seen" ticks only when both
+            participants have read receipts enabled (phase36, WhatsApp-style). */}
+        {mine && !deletedForAll && <Ticks seen={showSeen && !!readAt} />}
       </div>
     </div>
   );
