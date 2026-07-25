@@ -3,10 +3,8 @@ import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/profiles";
 import { getConversation } from "@/lib/messages";
-import MessageComposer from "@/components/MessageComposer";
-import MessageBubble from "@/components/MessageBubble";
 import MarkRead from "@/components/MarkRead";
-import ChatScroll from "@/components/ChatScroll";
+import ChatThread from "@/components/ChatThread";
 import { colors } from "@/lib/theme";
 
 function initials(name: string): string {
@@ -54,32 +52,15 @@ export default async function ConversationPage({
         </div>
       </div>
 
-      {/* Messages — internal scroller pinned to the newest message */}
-      <ChatScroll count={messages.length}>
-        {messages.length === 0 ? (
-          <div style={{ textAlign: "center", color: colors.inkFaint, fontSize: 14, padding: "40px 0" }}>
-            No messages yet — say hello.
-          </div>
-        ) : (
-          messages.map((m) => (
-            <MessageBubble
-              key={m.id}
-              conversationId={id}
-              id={m.id}
-              body={m.body}
-              createdAt={m.created_at}
-              mine={m.sender_id === user.id}
-              deletedForAll={m.deleted_for_all}
-              readAt={m.read_at}
-              showSeen={seenEnabled}
-              reactions={reactions[m.id] ?? []}
-            />
-          ))
-        )}
-      </ChatScroll>
-
-      <MessageComposer conversationId={id} />
-      <div style={{ height: 14, flexShrink: 0 }} />
+      {/* Messages + composer (client shell; owns swipe-to-reply state) */}
+      <ChatThread
+        conversationId={id}
+        currentUserId={user.id}
+        otherName={other.full_name}
+        messages={messages}
+        reactions={reactions}
+        seenEnabled={seenEnabled}
+      />
     </div>
   );
 }
