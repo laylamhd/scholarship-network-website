@@ -23,6 +23,7 @@ export async function startConversation(otherId: string) {
 export async function sendMessage(
   conversationId: string,
   body: string,
+  replyTo?: string | null,
 ): Promise<{ error?: string }> {
   const text = body.trim();
   if (!text) return {};
@@ -31,6 +32,7 @@ export async function sendMessage(
   const { error } = await supabase.rpc("send_message", {
     conv: conversationId,
     body: text,
+    reply_to: replyTo ?? null,
   });
   if (error) return { error: error.message };
 
