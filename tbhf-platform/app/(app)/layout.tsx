@@ -31,10 +31,15 @@ export default async function AppLayout({
   const recentUnread = recent.filter((n) => !n.is_read).slice(0, 6);
   const canModerate = !isAdmin && caps.length > 0;
 
+  // Shell is sized to the DYNAMIC viewport (100dvh), not 100vh. On mobile, 100vh
+  // is the *largest* viewport (address bar hidden) and is taller than what's
+  // actually visible, so the whole document could scroll by that difference.
+  // 100dvh matches the visible area, so `main` is the only scroller — which
+  // keeps the messages composer pinned (no page drift).
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: colors.bg }}>
+    <div style={{ display: "flex", minHeight: "100dvh", background: colors.bg }}>
       <Sidebar name={name} canModerate={canModerate} />
-      <main className="scr" style={{ flex: 1, minWidth: 0, height: "100vh", overflowY: "auto" }}>
+      <main className="scr" style={{ flex: 1, minWidth: 0, height: "100dvh", overflowY: "auto" }}>
         <TopBar unread={unread} notifUnread={notifUnread} notifications={recentUnread} />
         {children}
       </main>
