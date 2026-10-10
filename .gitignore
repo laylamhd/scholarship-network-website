@@ -3,3 +3,13 @@
 
 # misc
 *.pem
+
+# AWS deployment (deploy/aws): database exports, backups and secrets contain
+# members' personal data and passwords — they live only in CloudShell (~/tbhf).
+schema.sql
+data.sql
+schema-public.sql
+data-public.sql
+data-auth-users.sql
+secrets.env
+*.tar.gz

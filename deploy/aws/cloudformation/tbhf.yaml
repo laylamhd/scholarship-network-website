@@ -1,0 +1,451 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  TBHF Scholars Network on AWS (AWS Academy sandbox edition). CloudFront (HTTPS) ->
+  Application Load Balancer -> Auto Scaling group of Next.js servers in two
+  Availability Zones -> Amazon RDS for PostgreSQL in private subnets, with files in
+  Amazon S3 and CloudWatch alarms + dashboard. Everything is rebuilt from this one
+  template each lab session.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: tbhf
+    AllowedPattern: "^[a-z][a-z0-9-]{1,15}$"
+  InstanceProfileName:
+    Type: String
+    Description: Existing instance profile for EC2 (LabInstanceProfile, or EMR_EC2_DefaultRole when LabRole is missing).
+  CloudFrontPrefixListId:
+    Type: String
+    Default: pl-3b927c52
+    Description: AWS-managed prefix list com.amazonaws.global.cloudfront.origin-facing (us-east-1).
+  LatestAmiId:
+    Type: AWS::EC2::Image::Id
+    Description: Amazon Linux 2023 x86_64 image (scripts/deploy.sh looks up the newest one).
+  DBPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    MaxLength: 40
+    AllowedPattern: "^[A-Za-z0-9]+$"
+    ConstraintDescription: letters and digits only (16-40 characters)
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
+    AllowedValues: [db.t3.micro, db.t3.small, db.t3.medium]
+  DBEngineVersion:
+    Type: String
+    Default: "17.6"
+  WebInstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues: [t3.micro, t3.small, t2.small]
+  WebDesiredCapacity:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 3
+    Description: 0 while the database is being loaded, then 2.
+  AppVersion:
+    Type: String
+    Default: none
+    Description: Build to run (s3://<AppBucket>/app/app-<AppVersion>.tar.gz). Changing it creates a new launch-template version.
+  AlertEmail:
+    Type: String
+    Default: ""
+
+Conditions:
+  HasEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+
+Resources:
+  # ------------------------------------------------------------------ network
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.20.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-vpc" }]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-igw" }]
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { VpcId: !Ref VPC, InternetGatewayId: !Ref InternetGateway }
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.20.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-public-a" }]
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.20.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-public-b" }]
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.20.11.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-db-a" }]
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.20.12.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-db-b" }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-rt-public" }]
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  PublicAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref PublicRouteTable, SubnetId: !Ref PublicSubnetA }
+  PublicAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref PublicRouteTable, SubnetId: !Ref PublicSubnetB }
+  # Private route table: only the VPC-local route, no way in or out of the internet.
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-rt-private" }]
+  PrivateAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref PrivateRouteTable, SubnetId: !Ref PrivateSubnetA }
+  PrivateAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref PrivateRouteTable, SubnetId: !Ref PrivateSubnetB }
+
+  # ------------------------------------------------------------ security groups
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB - HTTP only from CloudFront edge servers
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, SourcePrefixListId: !Ref CloudFrontPrefixListId, Description: CloudFront }
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-alb-sg" }]
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Next.js servers - port 3000 only from the ALB
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 3000, ToPort: 3000, SourceSecurityGroupId: !Ref AlbSecurityGroup, Description: ALB }
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-web-sg" }]
+  OpsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Short-lived build/import/backup instance - no inbound access
+      VpcId: !Ref VPC
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-ops-sg" }]
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS PostgreSQL - port 5432 only from the web servers and the ops instance
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref WebSecurityGroup, Description: web servers }
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref OpsSecurityGroup, Description: ops instance }
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-db-sg" }]
+
+  # ---------------------------------------------------------------- S3
+  AppBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }]
+      PublicAccessBlockConfiguration:
+        { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      OwnershipControls: { Rules: [{ ObjectOwnership: BucketOwnerEnforced }] }
+      Tags: [{ Key: Project, Value: !Ref ProjectName }]
+  MediaBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }]
+      PublicAccessBlockConfiguration:
+        { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      OwnershipControls: { Rules: [{ ObjectOwnership: BucketOwnerEnforced }] }
+      VersioningConfiguration: { Status: Enabled }
+      Tags: [{ Key: Project, Value: !Ref ProjectName }]
+
+  # --------------------------------------------------------------- RDS
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets for the database
+      SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB]
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Sub "${ProjectName}-db"
+      Engine: postgres
+      EngineVersion: !Ref DBEngineVersion
+      DBInstanceClass: !Ref DBInstanceClass
+      AllocatedStorage: "20"
+      StorageType: gp2
+      StorageEncrypted: true
+      MultiAZ: false
+      PubliclyAccessible: false
+      DBName: tbhf
+      MasterUsername: tbhf_admin
+      MasterUserPassword: !Ref DBPassword
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups: [!Ref DbSecurityGroup]
+      BackupRetentionPeriod: 1
+      DeleteAutomatedBackups: true
+      DeletionProtection: false
+      MonitoringInterval: 0
+      EnablePerformanceInsights: false
+      AutoMinorVersionUpgrade: false
+      Tags: [{ Key: Project, Value: !Ref ProjectName }]
+
+  # ------------------------------------------------------- load balancer
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-alb"
+      Scheme: internet-facing
+      Type: application
+      Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+      SecurityGroups: [!Ref AlbSecurityGroup]
+  WebTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${ProjectName}-web-tg"
+      VpcId: !Ref VPC
+      Protocol: HTTP
+      Port: 3000
+      TargetType: instance
+      HealthCheckPath: /login
+      Matcher: { HttpCode: "200-399" }
+      HealthCheckIntervalSeconds: 15
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      TargetGroupAttributes:
+        - { Key: deregistration_delay.timeout_seconds, Value: "30" }
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions: [{ Type: forward, TargetGroupArn: !Ref WebTargetGroup }]
+
+  # ------------------------------------------------------------- web tier
+  WebLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub "${ProjectName}-web-lt"
+      LaunchTemplateData:
+        ImageId: !Ref LatestAmiId
+        InstanceType: !Ref WebInstanceType
+        IamInstanceProfile: { Name: !Ref InstanceProfileName }
+        SecurityGroupIds: [!Ref WebSecurityGroup]
+        MetadataOptions: { HttpTokens: required, HttpEndpoint: enabled, HttpPutResponseHopLimit: 1 }
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs: { VolumeSize: 16, VolumeType: gp2, Encrypted: true, DeleteOnTermination: true }
+        TagSpecifications:
+          - ResourceType: instance
+            Tags: [{ Key: Name, Value: !Sub "${ProjectName}-web" }, { Key: Project, Value: !Ref ProjectName }]
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            # Web server boot: fetch the boot script from S3 and run it (deploy/aws/ops/web-boot.sh).
+            exec > >(tee -a /var/log/tbhf-boot.log) 2>&1
+            set -eux
+            aws s3 cp s3://${AppBucket}/deploy/web-boot.sh /opt/web-boot.sh --region ${AWS::Region}
+            APP_BUCKET=${AppBucket} APP_VERSION=${AppVersion} AWS_REGION=${AWS::Region} bash /opt/web-boot.sh
+  WebAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: !Sub "${ProjectName}-web-asg"
+      VPCZoneIdentifier: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WebLaunchTemplate
+        Version: !GetAtt WebLaunchTemplate.LatestVersionNumber
+      MinSize: !Ref WebDesiredCapacity
+      DesiredCapacity: !Ref WebDesiredCapacity
+      MaxSize: "3"
+      TargetGroupARNs: [!Ref WebTargetGroup]
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 240
+      MetricsCollection: [{ Granularity: 1Minute }]
+      Tags: [{ Key: Project, Value: !Ref ProjectName, PropagateAtLaunch: true }]
+  CpuScalingPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref WebAutoScalingGroup
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification: { PredefinedMetricType: ASGAverageCPUUtilization }
+        TargetValue: 50
+
+  # ------------------------------------------------------------- CloudFront
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Comment: !Sub "${ProjectName} scholarship network"
+        Enabled: true
+        PriceClass: PriceClass_100
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        Origins:
+          - Id: alb
+            DomainName: !GetAtt LoadBalancer.DNSName
+            CustomOriginConfig:
+              HTTPPort: 80
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 60
+        DefaultCacheBehavior:
+          TargetOriginId: alb
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad        # Managed-CachingDisabled
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3 # Managed-AllViewer
+        CacheBehaviors:
+          - PathPattern: /_next/static/*
+            TargetOriginId: alb
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6      # Managed-CachingOptimized
+
+  # ------------------------------------------------------------- monitoring
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasEmail
+    Properties:
+      TopicName: !Sub "${ProjectName}-alerts"
+      Subscription: [{ Protocol: email, Endpoint: !Ref AlertEmail }]
+  WebUnhealthyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-web-unhealthy"
+      AlarmDescription: A web server behind the ALB is failing health checks
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - { Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }
+        - { Name: TargetGroup, Value: !GetAtt WebTargetGroup.TargetGroupFullName }
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasEmail, [!Ref AlertTopic], !Ref "AWS::NoValue"]
+  Web5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-web-5xx"
+      AlarmDescription: More than 10 server errors in 5 minutes
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions: [{ Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasEmail, [!Ref AlertTopic], !Ref "AWS::NoValue"]
+  DbCpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-db-cpu"
+      AlarmDescription: Database CPU above 80% for 10 minutes
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref Database }]
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions: !If [HasEmail, [!Ref AlertTopic], !Ref "AWS::NoValue"]
+  DbStorageAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-db-storage"
+      AlarmDescription: Less than 2 GB of database storage left
+      Namespace: AWS/RDS
+      MetricName: FreeStorageSpace
+      Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref Database }]
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 2147483648
+      ComparisonOperator: LessThanThreshold
+      AlarmActions: !If [HasEmail, [!Ref AlertTopic], !Ref "AWS::NoValue"]
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Ref ProjectName
+      DashboardBody: !Sub
+        - |
+          {"widgets":[
+            {"type":"metric","x":0,"y":0,"width":12,"height":6,"properties":{"title":"Requests through the ALB","region":"${AWS::Region}","stat":"Sum","period":60,
+              "metrics":[["AWS/ApplicationELB","RequestCount","LoadBalancer","${Lb}"]]}},
+            {"type":"metric","x":12,"y":0,"width":12,"height":6,"properties":{"title":"Response time p90 (s)","region":"${AWS::Region}","stat":"p90","period":60,
+              "metrics":[["AWS/ApplicationELB","TargetResponseTime","LoadBalancer","${Lb}"]]}},
+            {"type":"metric","x":0,"y":6,"width":12,"height":6,"properties":{"title":"Healthy web servers","region":"${AWS::Region}","stat":"Minimum","period":60,
+              "metrics":[["AWS/ApplicationELB","HealthyHostCount","TargetGroup","${Tg}","LoadBalancer","${Lb}"]]}},
+            {"type":"metric","x":12,"y":6,"width":12,"height":6,"properties":{"title":"HTTP errors","region":"${AWS::Region}","stat":"Sum","period":60,
+              "metrics":[["AWS/ApplicationELB","HTTPCode_Target_4XX_Count","LoadBalancer","${Lb}"],["AWS/ApplicationELB","HTTPCode_Target_5XX_Count","LoadBalancer","${Lb}"]]}},
+            {"type":"metric","x":0,"y":12,"width":12,"height":6,"properties":{"title":"CPU % - web tier (ASG) and database","region":"${AWS::Region}","stat":"Average","period":60,
+              "metrics":[["AWS/EC2","CPUUtilization","AutoScalingGroupName","${ProjectName}-web-asg",{"label":"web ASG"}],["AWS/RDS","CPUUtilization","DBInstanceIdentifier","${ProjectName}-db",{"label":"RDS"}]]}},
+            {"type":"metric","x":12,"y":12,"width":12,"height":6,"properties":{"title":"Database connections","region":"${AWS::Region}","stat":"Maximum","period":60,
+              "metrics":[["AWS/RDS","DatabaseConnections","DBInstanceIdentifier","${ProjectName}-db"]]}}
+          ]}
+        - Lb: !GetAtt LoadBalancer.LoadBalancerFullName
+          Tg: !GetAtt WebTargetGroup.TargetGroupFullName
+
+Outputs:
+  SiteUrl:
+    Value: !Sub "https://${Distribution.DomainName}"
+  CloudFrontId:
+    Value: !Ref Distribution
+  AlbDns:
+    Value: !GetAtt LoadBalancer.DNSName
+  DbEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  AppBucket:
+    Value: !Ref AppBucket
+  MediaBucket:
+    Value: !Ref MediaBucket
+  AsgName:
+    Value: !Ref WebAutoScalingGroup
+  WebTargetGroupArn:
+    Value: !Ref WebTargetGroup
+  PublicSubnetA:
+    Value: !Ref PublicSubnetA
+  OpsSecurityGroup:
+    Value: !Ref OpsSecurityGroup

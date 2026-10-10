@@ -27,7 +27,8 @@ export async function updateEmail(_prev: FormState, formData: FormData): Promise
   if (error) return { error: error.message };
 
   revalidatePath("/settings");
-  return { ok: `We've sent a confirmation link to ${email}. Click it to finish the change.` };
+  // AWS deployment: there is no mail server, so the change applies immediately.
+  return { ok: `Your email address is now ${email}.` };
 }
 
 /**

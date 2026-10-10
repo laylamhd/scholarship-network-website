@@ -1,32 +1,32 @@
-import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { Auth } from "@/lib/aws/auth";
+import { QueryBuilder, type Identity } from "@/lib/aws/postgrest";
+import { RpcCall } from "@/lib/aws/rpc";
+import { StorageBucket } from "@/lib/aws/storage";
+import { SESSION_COOKIE, verifySession } from "@/lib/aws/session";
 
 /**
- * Supabase client for use in Server Components, Server Actions, and Route Handlers.
- * Reads/writes the auth session via cookies.
+ * Data-access client for Server Components, Server Actions and Route Handlers.
+ *
+ * AWS deployment: this used to create a Supabase client. It now returns an
+ * object with the SAME shape (`from`, `rpc`, `auth`, `storage`), backed by
+ * Amazon RDS for PostgreSQL and Amazon S3 (see lib/aws/*). Every page and
+ * action that calls `createClient()` keeps working without changes.
  */
 export async function createClient() {
-  const cookieStore = await cookies();
+  const jar = await cookies();
 
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options),
-            );
-          } catch {
-            // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing sessions.
-          }
-        },
-      },
-    },
-  );
+  // Who is asking? Verified from the signed session cookie once per client.
+  let identity: Promise<Identity> | null = null;
+  const who = () =>
+    (identity ??= verifySession(jar.get(SESSION_COOKIE)?.value).then((c) =>
+      c ? { role: "authenticated" as const, userId: c.sub } : { role: "anon" as const, userId: null },
+    ));
+
+  return {
+    from: (table: string) => new QueryBuilder(table, who),
+    rpc: (fn: string, args: Record<string, unknown> = {}) => new RpcCall(fn, args, who),
+    auth: new Auth(jar),
+    storage: { from: (bucket: string) => new StorageBucket(bucket, who) },
+  };
 }

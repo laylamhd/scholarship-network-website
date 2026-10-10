@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
-import type { EmailOtpType } from "@supabase/supabase-js";
+// AWS deployment: no Supabase SDK; same set of e-mail link types.
+type EmailOtpType = "signup" | "invite" | "magiclink" | "recovery" | "email_change" | "email";
 import { createClient } from "@/lib/supabase/server";
 
 /**

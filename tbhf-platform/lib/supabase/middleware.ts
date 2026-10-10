@@ -1,5 +1,5 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE, cookieOptions, shouldRenew, signSession, verifySession } from "@/lib/aws/session";
 
 // SECURITY (R3-01): a nonce-based Content-Security-Policy. The old CSP allowed
 // `script-src 'unsafe-inline'`, which let any HTML-injection foothold run as a
@@ -22,17 +22,19 @@ function buildCsp(nonce: string): string {
     "form-action 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://*.supabase.co",
+    // AWS deployment: files are served by this site at /media/..., and the
+    // browser only talks to this origin — no third-party hosts needed.
+    "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    "media-src 'self' https://*.supabase.co",
+    "media-src 'self'",
     "worker-src 'self' blob:",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+    "connect-src 'self'",
     "upgrade-insecure-requests",
   ].join("; ");
 }
 
 /**
- * Refreshes the Supabase auth session on every request and gates protected routes.
+ * Checks the session cookie on every request and gates protected routes.
  * Called from the root middleware.ts (proxy.ts).
  */
 export async function updateSession(request: NextRequest) {
@@ -58,46 +60,20 @@ export async function updateSession(request: NextRequest) {
     return res;
   };
 
-  let supabaseResponse = NextResponse.next({
+  const supabaseResponse = NextResponse.next({
     request: { headers: buildRequestHeaders() },
   });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          // buildRequestHeaders() snapshots request.headers *after* the cookie
-          // writes above (RequestCookies is backed by the cookie header), so the
-          // refreshed session and the CSP/nonce headers are forwarded together.
-          supabaseResponse = NextResponse.next({
-            request: { headers: buildRequestHeaders() },
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options),
-          );
-        },
-      },
-    },
-  );
-
-  // IMPORTANT: do not run code between createServerClient and the auth call.
-  // getClaims() verifies the session JWT's signature locally (the project uses an
-  // asymmetric ES256 signing key), avoiding the ~185ms network round trip that
-  // getUser() makes on every request. It still refreshes an about-to-expire
-  // session (writing new cookies via setAll above), and forged tokens are
-  // rejected. A signed-out token remains accepted for navigation until it
-  // expires — the same signature-based check the database RLS already applies to
-  // every query, so this doesn't widen data access.
-  const { data: claimsData } = await supabase.auth.getClaims();
-  const user = claimsData?.claims ?? null;
+  // AWS deployment: the session is our own signed cookie (lib/aws/session.ts).
+  // Verifying it is a local signature check — no database round trip, the
+  // same trade-off the Supabase version made with getClaims(). Data access is
+  // still re-checked by Row Level Security on every query.
+  const user = await verifySession(request.cookies.get(SESSION_COOKIE)?.value);
+  if (user && shouldRenew(user)) {
+    // Sliding expiry: re-issue a fresh 7-day cookie for active members.
+    const token = await signSession({ id: user.sub, email: user.email, tokenVersion: user.tv });
+    supabaseResponse.cookies.set(SESSION_COOKIE, token, cookieOptions());
+  }
 
   const path = request.nextUrl.pathname;
   const isAuthRoute =
@@ -105,7 +81,8 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/signup") ||
     path.startsWith("/verify-email") ||
     path.startsWith("/admin-access");
-  const isPublicAsset = path.startsWith("/auth"); // auth callback handlers
+  // auth callback handlers, and /media (the file route enforces its own rules)
+  const isPublicAsset = path.startsWith("/auth") || path.startsWith("/media/");
 
   // Not signed in and trying to reach a protected page -> send to /login
   if (!user && !isAuthRoute && !isPublicAsset) {
