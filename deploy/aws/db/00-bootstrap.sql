@@ -86,3 +86,17 @@ grant execute on function auth.uid(), auth.role() to public;
 -- Only the server-side service role may read/write login accounts.
 revoke all on auth.users from public, anon, authenticated;
 grant select, insert, update, delete on auth.users to service_role;
+
+-- ---------- password reset by e-mail (AWS account edition, sent with Amazon SES) ----------
+-- Only a SHA-256 hash of each one-time token is stored; the token itself exists
+-- only in the e-mail. Tokens expire after 1 hour and work once.
+create table if not exists auth.password_resets (
+  token_hash  text primary key,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  expires_at  timestamptz not null,
+  used_at     timestamptz
+);
+create index if not exists password_resets_user_idx on auth.password_resets (user_id, created_at);
+revoke all on auth.password_resets from public, anon, authenticated;
+grant select, insert, update, delete on auth.password_resets to service_role;

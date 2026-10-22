@@ -8,7 +8,11 @@
  * at a time; the function itself skips reminders that were already sent.
  */
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs" || !process.env.DATABASE_URL) return;
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  if (!process.env.DATABASE_URL && !process.env.PGHOST) return;
+  // In the AWS account deployment an AWS Lambda function, run hourly by Amazon
+  // EventBridge Scheduler, does this job instead (deploy/aws-account/lambda).
+  if (process.env.REMINDERS_MODE === "external") return;
   const { withRole } = await import("./lib/aws/db");
 
   const sweep = async () => {

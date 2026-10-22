@@ -1,0 +1,11 @@
+{
+  "name": "tbhf-reminders",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hourly event reminders for the TBHF Scholars Network (AWS Lambda, run by Amazon EventBridge Scheduler).",
+  "type": "module",
+  "main": "index.mjs",
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}

@@ -46,10 +46,13 @@ function sslConfig() {
 
 export function getPool(): Pool {
   if (!pool) {
+    // Either one DATABASE_URL, or the standard PGHOST / PGPORT / PGDATABASE /
+    // PGUSER / PGPASSWORD variables (the container setup injects the password
+    // from AWS Secrets Manager, so it never appears in a URL or config file).
     const url = process.env.DATABASE_URL;
-    if (!url) throw new Error("DATABASE_URL is not set");
+    if (!url && !process.env.PGHOST) throw new Error("Set DATABASE_URL or PGHOST/PGUSER/PGPASSWORD");
     pool = new Pool({
-      connectionString: url,
+      ...(url ? { connectionString: url } : {}),
       ssl: sslConfig(),
       max: Number(process.env.PG_POOL_MAX ?? 10),
       idleTimeoutMillis: 30_000,

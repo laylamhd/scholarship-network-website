@@ -114,7 +114,7 @@ function PwField({
   );
 }
 
-export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
+export default function AuthForm({ mode, resetDone = false }: { mode: "login" | "signup"; resetDone?: boolean }) {
   const isSignup = mode === "signup";
   const action = isSignup ? signup : login;
   const [state, formAction, pending] = useActionState<AuthState, FormData>(
@@ -327,6 +327,18 @@ export default function AuthForm({ mode }: { mode: "login" | "signup" }) {
             autoComplete={isSignup ? "new-password" : "current-password"}
             minLength={isSignup ? 8 : undefined}
           />
+
+          {!isSignup && (
+            <div style={{ textAlign: "end", marginTop: -6, marginBottom: 4, fontSize: 13.5 }}>
+              <Link href="/forgot-password" style={{ color: colors.brand, fontWeight: 600 }}>Forgot password?</Link>
+            </div>
+          )}
+
+          {!isSignup && resetDone && !state && (
+            <div style={{ fontSize: 13.5, color: "#1E6B4E", background: "#E8F6EF", border: "1px solid #B6E3CD", padding: "12px 14px", borderRadius: radius.sm, margin: "14px 0 0", lineHeight: 1.5 }}>
+              Your password was changed. Sign in with your new password.
+            </div>
+          )}
 
           {isSignup && (
             <PwField

@@ -80,7 +80,9 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/login") ||
     path.startsWith("/signup") ||
     path.startsWith("/verify-email") ||
-    path.startsWith("/admin-access");
+    path.startsWith("/admin-access") ||
+    path.startsWith("/forgot-password") ||
+    path.startsWith("/reset-password");
   // auth callback handlers, and /media (the file route enforces its own rules)
   const isPublicAsset = path.startsWith("/auth") || path.startsWith("/media/");
 
