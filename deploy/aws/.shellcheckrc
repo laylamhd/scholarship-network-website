@@ -1,0 +1,2 @@
+# Stack outputs (SiteUrl, AppBucket, …) are assigned by sourcing ~/tbhf/stack.env.
+disable=SC2154,SC2015,SC2012,SC1091

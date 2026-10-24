@@ -23,6 +23,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // AWS deployment: build a self-contained server (.next/standalone) that the
+  // EC2 instances run with plain `node server.js` — no npm install on servers.
+  output: "standalone",
+  // Uploads (up to 100 MB for showcase/community media) pass through the proxy.
+  experimental: { proxyClientMaxBodySize: "105mb" },
   // Don't advertise the framework version.
   poweredByHeader: false,
   async headers() {
@@ -33,6 +38,9 @@ const nextConfig: NextConfig = {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
   images: {
+    // AWS deployment: files are served by this site at /media/... with their
+    // own caching, so the image optimiser (and its sharp dependency) is off.
+    unoptimized: true,
     remotePatterns: [
       // Supabase Storage public URLs (avatars live at <project>.supabase.co/storage/...)
       {

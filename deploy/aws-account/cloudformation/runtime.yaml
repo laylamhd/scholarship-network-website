@@ -1,0 +1,992 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  TBHF Scholars Network on AWS (own account) - RUNTIME stack: the parts that
+  cost money by the hour. 3-tier VPC in 2 Availability Zones with a NAT gateway,
+  CloudFront + AWS WAF in front of an Application Load Balancer, the website on
+  Amazon ECS / AWS Fargate with auto scaling, Amazon RDS for PostgreSQL
+  (Multi-AZ), an AWS Lambda reminder job run by Amazon EventBridge Scheduler,
+  AWS Backup, VPC Flow Logs, CloudWatch alarms and dashboard.
+  stop.sh deletes this stack (the database is saved as a snapshot first);
+  start.sh recreates it from that snapshot. Needs the FOUNDATION stack.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: tbhf
+  ImageTag:
+    Type: String
+    Description: Version of the website and ops images in ECR (written by the build to release/latest.json).
+  LambdaS3Key:
+    Type: String
+    Description: S3 key of the reminders Lambda package in the artifacts bucket.
+  SenderEmail:
+    Type: String
+    Default: ""
+    Description: Verified SES sender for password-reset e-mails (empty = e-mail off).
+  DBSnapshotIdentifier:
+    Type: String
+    Default: ""
+    Description: Restore the database from this snapshot (set by start.sh). Empty = new, empty database. Never change it while the stack exists.
+  DBInstanceClass:
+    Type: String
+    Default: db.t4g.micro
+    AllowedValues: [db.t4g.micro, db.t3.micro, db.t4g.small, db.t3.small]
+  DBEngineVersion:
+    Type: String
+    Default: "17.6"
+  DBMultiAZ:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+  DBBackupRetentionDays:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 35
+    Description: RDS automated backups (the free plan allows 1 day; AWS Backup keeps daily copies for 7 days)
+  WebCpu:
+    Type: String
+    Default: "512"
+    AllowedValues: ["256", "512", "1024"]
+  WebMemory:
+    Type: String
+    Default: "1024"
+    AllowedValues: ["512", "1024", "2048"]
+  WebMinTasks:
+    Type: Number
+    Default: 2
+    MinValue: 1
+  WebMaxTasks:
+    Type: Number
+    Default: 4
+    MinValue: 1
+  ContainerInsights:
+    Type: String
+    Default: disabled
+    AllowedValues: [enabled, disabled]
+  CloudFrontPrefixListId:
+    Type: String
+    Default: pl-3b927c52
+    Description: AWS-managed prefix list com.amazonaws.global.cloudfront.origin-facing (us-east-1).
+  WafRateLimit:
+    Type: Number
+    Default: 2000
+    MinValue: 100
+    Description: Requests per 5 minutes from one IP address before AWS WAF steps in.
+  WafRateAction:
+    Type: String
+    Default: Block
+    AllowedValues: [Block, Count]
+    Description: Count = only measure (use during the load-test experiment).
+
+Conditions:
+  FromSnapshot: !Not [!Equals [!Ref DBSnapshotIdentifier, ""]]
+  HasSender: !Not [!Equals [!Ref SenderEmail, ""]]
+  RateBlock: !Equals [!Ref WafRateAction, Block]
+
+Resources:
+  # =========================================================== network
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.30.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-vpc" }]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-igw" }]
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { VpcId: !Ref VPC, InternetGatewayId: !Ref InternetGateway }
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.30.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-public-a" }]
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.30.1.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-public-b" }]
+  AppSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.30.10.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-app-a" }]
+  AppSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.30.11.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-app-b" }]
+  DbSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.30.20.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-db-a" }]
+  DbSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.30.21.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-db-b" }]
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-rt-public" }]
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties: { RouteTableId: !Ref PublicRouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref InternetGateway }
+  PublicAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref PublicRouteTable, SubnetId: !Ref PublicSubnetA }
+  PublicAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref PublicRouteTable, SubnetId: !Ref PublicSubnetB }
+
+  # One NAT gateway (in AZ a) keeps the cost down; a production setup would use one per AZ.
+  NatEip:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-nat" }]
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-nat" }]
+  AppRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-rt-app" }]
+  AppDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties: { RouteTableId: !Ref AppRouteTable, DestinationCidrBlock: 0.0.0.0/0, NatGatewayId: !Ref NatGateway }
+  AppAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref AppRouteTable, SubnetId: !Ref AppSubnetA }
+  AppAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref AppRouteTable, SubnetId: !Ref AppSubnetB }
+  # Database subnets: only the VPC-local route. No way in from, or out to, the internet.
+  DbRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-rt-db" }]
+  DbAssocA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref DbRouteTable, SubnetId: !Ref DbSubnetA }
+  DbAssocB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref DbRouteTable, SubnetId: !Ref DbSubnetB }
+  # S3 traffic from the app subnets goes straight to S3, not through the (paid) NAT gateway.
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds: [!Ref AppRouteTable]
+
+  # VPC Flow Logs: record every connection the firewalls REJECT (who knocked, on which port).
+  FlowLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: !Sub "/${ProjectName}/vpc-rejected", RetentionInDays: 7 }
+  FlowLogRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: vpc-flow-logs.amazonaws.com }, Action: sts:AssumeRole }]
+      Policies:
+        - PolicyName: write-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents, logs:DescribeLogStreams]
+                Resource: !GetAtt FlowLogGroup.Arn
+  FlowLog:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      ResourceId: !Ref VPC
+      ResourceType: VPC
+      TrafficType: REJECT
+      LogDestinationType: cloud-watch-logs
+      LogGroupName: !Ref FlowLogGroup
+      DeliverLogsPermissionArn: !GetAtt FlowLogRole.Arn
+
+  # =========================================================== firewalls (security groups)
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Load balancer - HTTP only from CloudFront edge servers
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, SourcePrefixListId: !Ref CloudFrontPrefixListId, Description: CloudFront }
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-alb-sg" }]
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Website containers - port 3000 only from the load balancer
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 3000, ToPort: 3000, SourceSecurityGroupId: !Ref AlbSecurityGroup, Description: load balancer }
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-app-sg" }]
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Reminders Lambda - no inbound access
+      VpcId: !Ref VPC
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-lambda-sg" }]
+  OpsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: One-off database tasks - no inbound access
+      VpcId: !Ref VPC
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-ops-sg" }]
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS PostgreSQL - port 5432 only from the website, the Lambda and the ops task
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref AppSecurityGroup, Description: website }
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref LambdaSecurityGroup, Description: reminders lambda }
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref OpsSecurityGroup, Description: ops task }
+      Tags: [{ Key: Name, Value: !Sub "${ProjectName}-db-sg" }]
+
+  # =========================================================== database (RDS)
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private database subnets in two Availability Zones
+      SubnetIds: [!Ref DbSubnetA, !Ref DbSubnetB]
+  DbMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: monitoring.rds.amazonaws.com }, Action: sts:AssumeRole }]
+      ManagedPolicyArns: [!Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"]
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub "${ProjectName}-db"
+      Engine: postgres
+      EngineVersion: !Ref DBEngineVersion
+      DBInstanceClass: !Ref DBInstanceClass
+      MultiAZ: !Ref DBMultiAZ
+      AllocatedStorage: "20"
+      MaxAllocatedStorage: 50
+      StorageType: gp3
+      DBSnapshotIdentifier: !If [FromSnapshot, !Ref DBSnapshotIdentifier, !Ref AWS::NoValue]
+      # A new database gets these; a restored one keeps the snapshot's own.
+      DBName: !If [FromSnapshot, !Ref AWS::NoValue, tbhf]
+      MasterUsername: !If [FromSnapshot, !Ref AWS::NoValue, tbhf_admin]
+      MasterUserPassword: !If [FromSnapshot, !Ref AWS::NoValue, !Sub "{{resolve:secretsmanager:${ProjectName}/db-master-password}}"]
+      StorageEncrypted: !If [FromSnapshot, !Ref AWS::NoValue, true]
+      KmsKeyId: !If [FromSnapshot, !Ref AWS::NoValue, !ImportValue { "Fn::Sub": "${ProjectName}-foundation-KeyArn" }]
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups: [!Ref DbSecurityGroup]
+      PubliclyAccessible: false
+      BackupRetentionPeriod: !Ref DBBackupRetentionDays
+      PreferredBackupWindow: "02:00-03:00"
+      PreferredMaintenanceWindow: "fri:03:30-fri:04:30"
+      CopyTagsToSnapshot: true
+      DeletionProtection: false
+      AutoMinorVersionUpgrade: true
+      MonitoringInterval: 60
+      MonitoringRoleArn: !GetAtt DbMonitoringRole.Arn
+      EnableCloudwatchLogsExports: [postgresql]
+      Tags: [{ Key: Project, Value: !Ref ProjectName }]
+
+  # AWS Backup: a daily backup of the database, kept for 7 days, in the foundation's vault.
+  BackupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: backup.amazonaws.com }, Action: sts:AssumeRole }]
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores"
+  BackupPlan:
+    Type: AWS::Backup::BackupPlan
+    Properties:
+      BackupPlan:
+        BackupPlanName: !Sub "${ProjectName}-daily"
+        BackupPlanRule:
+          - RuleName: daily
+            TargetBackupVault: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-BackupVaultName" }
+            ScheduleExpression: cron(0 5 * * ? *)
+            StartWindowMinutes: 60
+            CompletionWindowMinutes: 180
+            Lifecycle: { DeleteAfterDays: 7 }
+  BackupSelection:
+    Type: AWS::Backup::BackupSelection
+    Properties:
+      BackupPlanId: !Ref BackupPlan
+      BackupSelection:
+        SelectionName: database
+        IamRoleArn: !GetAtt BackupRole.Arn
+        Resources: [!Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:${Database}"]
+
+  # =========================================================== load balancer
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "${ProjectName}-alb"
+      Scheme: internet-facing
+      Type: application
+      Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB]
+      SecurityGroups: [!Ref AlbSecurityGroup]
+      LoadBalancerAttributes:
+        - { Key: routing.http.drop_invalid_header_fields.enabled, Value: "true" }
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${ProjectName}-web-tg"
+      VpcId: !Ref VPC
+      Protocol: HTTP
+      Port: 3000
+      TargetType: ip
+      HealthCheckPath: /login
+      Matcher: { HttpCode: "200-399" }
+      HealthCheckIntervalSeconds: 15
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      TargetGroupAttributes:
+        - { Key: deregistration_delay.timeout_seconds, Value: "30" }
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig: { StatusCode: "403", ContentType: text/plain, MessageBody: "Use the website address." }
+  # Only requests carrying CloudFront's secret header reach the website.
+  FromCloudFrontRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref Listener
+      Priority: 1
+      Conditions:
+        - Field: http-header
+          HttpHeaderConfig:
+            HttpHeaderName: X-Origin-Verify
+            Values: [!Sub "{{resolve:secretsmanager:${ProjectName}/origin-verify}}"]
+      Actions: [{ Type: forward, TargetGroupArn: !Ref TargetGroup }]
+
+  # =========================================================== containers (ECS on Fargate)
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "${ProjectName}-cluster"
+      ClusterSettings: [{ Name: containerInsights, Value: !Ref ContainerInsights }]
+      CapacityProviders: [FARGATE]
+  WebLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: !Sub "/${ProjectName}/web", RetentionInDays: 14 }
+  OpsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: !Sub "/${ProjectName}/ops", RetentionInDays: 14 }
+
+  # Used by ECS itself: pull images, write logs, read the secrets it injects.
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }]
+      ManagedPolicyArns: [!Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"]
+      Policies:
+        - PolicyName: read-secrets
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource:
+                  - !ImportValue { "Fn::Sub": "${ProjectName}-foundation-DbMasterPasswordSecretArn" }
+                  - !ImportValue { "Fn::Sub": "${ProjectName}-foundation-AppDbPasswordSecretArn" }
+                  - !ImportValue { "Fn::Sub": "${ProjectName}-foundation-SessionSecretArn" }
+                  - !ImportValue { "Fn::Sub": "${ProjectName}-foundation-SeedPasswordSecretArn" }
+                  - !ImportValue { "Fn::Sub": "${ProjectName}-foundation-AdminCodeSecretArn" }
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-KeyArn" }
+  # Used by the website code: media files in S3, e-mail via SES, ECS Exec.
+  WebTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }]
+      Policies:
+        - PolicyName: website
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: !Sub
+                  - "${Arn}/*"
+                  - Arn: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-MediaBucketArn" }
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-MediaBucketArn" }
+              - Effect: Allow
+                Action: ses:SendEmail
+                Resource: !Sub "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/*"
+              - Effect: Allow
+                Action: [ssmmessages:CreateControlChannel, ssmmessages:CreateDataChannel, ssmmessages:OpenControlChannel, ssmmessages:OpenDataChannel]
+                Resource: "*"
+  OpsTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: sts:AssumeRole }]
+      Policies:
+        - PolicyName: read-import
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub
+                  - "arn:${AWS::Partition}:s3:::${Bucket}/import/*"
+                  - Bucket: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-ArtifactsBucket" }
+
+  WebTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ProjectName}-web"
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: !Ref WebCpu
+      Memory: !Ref WebMemory
+      RuntimePlatform: { OperatingSystemFamily: LINUX, CpuArchitecture: X86_64 }
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt WebTaskRole.Arn
+      ContainerDefinitions:
+        - Name: web
+          Image: !Sub
+            - "${Repo}:${ImageTag}"
+            - Repo: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-WebRepositoryUri" }
+          Essential: true
+          PortMappings: [{ ContainerPort: 3000, Protocol: tcp }]
+          Environment:
+            - { Name: PGHOST, Value: !GetAtt Database.Endpoint.Address }
+            - { Name: PGPORT, Value: !GetAtt Database.Endpoint.Port }
+            - { Name: PGDATABASE, Value: tbhf }
+            - { Name: PGUSER, Value: tbhf_app }
+            - { Name: PG_POOL_MAX, Value: "10" }
+            - Name: MEDIA_BUCKET
+              Value: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-MediaBucket" }
+            - { Name: AWS_REGION, Value: !Ref AWS::Region }
+            - { Name: SITE_URL, Value: !Sub "https://${Distribution.DomainName}" }
+            - { Name: MAIL_FROM, Value: !If [HasSender, !Sub "TBHF Scholars Network <${SenderEmail}>", ""] }
+            - { Name: REMINDERS_MODE, Value: external }
+            - { Name: HOSTNAME, Value: "0.0.0.0" }
+          Secrets:
+            - Name: PGPASSWORD
+              ValueFrom: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-AppDbPasswordSecretArn" }
+            - Name: SESSION_SECRET
+              ValueFrom: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-SessionSecretArn" }
+          HealthCheck:
+            Command: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/login || exit 1"]
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 40
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref WebLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: web
+  WebService:
+    Type: AWS::ECS::Service
+    DependsOn: FromCloudFrontRule
+    Properties:
+      ServiceName: !Sub "${ProjectName}-web"
+      Cluster: !Ref Cluster
+      LaunchType: FARGATE
+      TaskDefinition: !Ref WebTaskDefinition
+      DesiredCount: !Ref WebMinTasks
+      EnableExecuteCommand: true
+      PropagateTags: SERVICE
+      HealthCheckGracePeriodSeconds: 60
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          Subnets: [!Ref AppSubnetA, !Ref AppSubnetB]
+          SecurityGroups: [!Ref AppSecurityGroup]
+          AssignPublicIp: DISABLED
+      LoadBalancers: [{ ContainerName: web, ContainerPort: 3000, TargetGroupArn: !Ref TargetGroup }]
+  WebScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      ServiceNamespace: ecs
+      ScalableDimension: ecs:service:DesiredCount
+      ResourceId: !Sub "service/${Cluster}/${WebService.Name}"
+      MinCapacity: !Ref WebMinTasks
+      MaxCapacity: !Ref WebMaxTasks
+  WebCpuScaling:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub "${ProjectName}-cpu50"
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref WebScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 50
+        PredefinedMetricSpecification: { PredefinedMetricType: ECSServiceAverageCPUUtilization }
+        ScaleOutCooldown: 60
+        ScaleInCooldown: 300
+
+  # One-off database jobs (scripts/run-ops.sh): import, checks.
+  OpsTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${ProjectName}-ops"
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: "512"
+      Memory: "1024"
+      RuntimePlatform: { OperatingSystemFamily: LINUX, CpuArchitecture: X86_64 }
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt OpsTaskRole.Arn
+      ContainerDefinitions:
+        - Name: ops
+          Image: !Sub
+            - "${Repo}:${ImageTag}"
+            - Repo: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-OpsRepositoryUri" }
+          Essential: true
+          Environment:
+            - { Name: PGHOST, Value: !GetAtt Database.Endpoint.Address }
+            - { Name: PGPORT, Value: !GetAtt Database.Endpoint.Port }
+            - { Name: PGDATABASE, Value: tbhf }
+            - { Name: PGUSER, Value: tbhf_admin }
+            - Name: IMPORT_BUCKET
+              Value: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-ArtifactsBucket" }
+          Secrets:
+            - Name: PGPASSWORD
+              ValueFrom: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-DbMasterPasswordSecretArn" }
+            - Name: APP_DB_PASSWORD
+              ValueFrom: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-AppDbPasswordSecretArn" }
+            - Name: SEED_PASSWORD
+              ValueFrom: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-SeedPasswordSecretArn" }
+            - Name: ADMIN_CODE
+              ValueFrom: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-AdminCodeSecretArn" }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref OpsLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ops
+
+  # =========================================================== reminders (Lambda + EventBridge Scheduler)
+  RemindersRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: lambda.amazonaws.com }, Action: sts:AssumeRole }]
+      ManagedPolicyArns: [!Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"]
+      Policies:
+        - PolicyName: read-db-password
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-AppDbPasswordSecretArn" }
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-KeyArn" }
+  RemindersLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: !Sub "/aws/lambda/${ProjectName}-reminders", RetentionInDays: 14 }
+  RemindersFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: RemindersLogGroup
+    Properties:
+      FunctionName: !Sub "${ProjectName}-reminders"
+      Description: Hourly event reminders (replaces the Supabase pg_cron job)
+      Runtime: nodejs22.x
+      Handler: index.handler
+      Role: !GetAtt RemindersRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Code:
+        S3Bucket: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-ArtifactsBucket" }
+        S3Key: !Ref LambdaS3Key
+      VpcConfig:
+        SubnetIds: [!Ref AppSubnetA, !Ref AppSubnetB]
+        SecurityGroupIds: [!Ref LambdaSecurityGroup]
+      Environment:
+        Variables:
+          PGHOST: !GetAtt Database.Endpoint.Address
+          PGPORT: !GetAtt Database.Endpoint.Port
+          PGDATABASE: tbhf
+          PGUSER: tbhf_app
+          DB_PASSWORD_SECRET_ARN: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-AppDbPasswordSecretArn" }
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement: [{ Effect: Allow, Principal: { Service: scheduler.amazonaws.com }, Action: sts:AssumeRole }]
+      Policies:
+        - PolicyName: invoke
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement: [{ Effect: Allow, Action: lambda:InvokeFunction, Resource: !GetAtt RemindersFunction.Arn }]
+  RemindersSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub "${ProjectName}-hourly-reminders"
+      Description: Runs the event-reminder sweep every hour
+      ScheduleExpression: rate(1 hour)
+      FlexibleTimeWindow: { Mode: "OFF" }
+      Target:
+        Arn: !GetAtt RemindersFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        RetryPolicy: { MaximumRetryAttempts: 2 }
+
+  # =========================================================== CDN (CloudFront) + firewall (WAF)
+  MediaOriginAccess:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${ProjectName}-media"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  # /media/avatars/x.jpg  ->  S3 key avatars/x.jpg
+  MediaPathFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "${ProjectName}-media-path"
+      AutoPublish: true
+      FunctionConfig: { Comment: Strip the /media prefix before reading S3, Runtime: cloudfront-js-2.0 }
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          request.uri = request.uri.replace(/^\/media(?=\/)/, '');
+          return request;
+        }
+  # Uploaded files are shown, never run: no scripts, no framing, no type sniffing.
+  MediaHeadersPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub "${ProjectName}-media-headers"
+        SecurityHeadersConfig:
+          ContentTypeOptions: { Override: true }
+          FrameOptions: { FrameOption: DENY, Override: true }
+          ContentSecurityPolicy: { ContentSecurityPolicy: "default-src 'none'; style-src 'unsafe-inline'; sandbox", Override: true }
+          StrictTransportSecurity: { AccessControlMaxAgeSec: 63072000, IncludeSubdomains: true, Override: true }
+  WebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub "${ProjectName}-waf"
+      Scope: CLOUDFRONT
+      DefaultAction: { Allow: {} }
+      VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: !Sub "${ProjectName}-waf" }
+      Rules:
+        - Name: rate-limit-per-ip
+          Priority: 0
+          Action: !If [RateBlock, { Block: {} }, { Count: {} }]
+          Statement: { RateBasedStatement: { Limit: !Ref WafRateLimit, AggregateKeyType: IP } }
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: rate-limit }
+        - Name: aws-ip-reputation
+          Priority: 1
+          OverrideAction: { None: {} }
+          Statement: { ManagedRuleGroupStatement: { VendorName: AWS, Name: AWSManagedRulesAmazonIpReputationList } }
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: ip-reputation }
+        - Name: aws-common
+          Priority: 2
+          OverrideAction: { None: {} }
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+              # Uploads (up to 100 MB) and form posts are larger than this rule's 8 KB limit.
+              RuleActionOverrides: [{ Name: SizeRestrictions_BODY, ActionToUse: { Count: {} } }]
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: common }
+        - Name: aws-known-bad-inputs
+          Priority: 3
+          OverrideAction: { None: {} }
+          Statement: { ManagedRuleGroupStatement: { VendorName: AWS, Name: AWSManagedRulesKnownBadInputsRuleSet } }
+          VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: known-bad-inputs }
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "${ProjectName} scholars network"
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_200
+        WebACLId: !GetAtt WebAcl.Arn
+        Origins:
+          - Id: alb
+            DomainName: !GetAtt LoadBalancer.DNSName
+            CustomOriginConfig: { OriginProtocolPolicy: http-only, HTTPPort: 80, OriginReadTimeout: 60 }
+            OriginCustomHeaders:
+              - HeaderName: X-Origin-Verify
+                HeaderValue: !Sub "{{resolve:secretsmanager:${ProjectName}/origin-verify}}"
+          - Id: media
+            DomainName: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-MediaBucketDomain" }
+            OriginAccessControlId: !GetAtt MediaOriginAccess.Id
+            S3OriginConfig: { OriginAccessIdentity: "" }
+        DefaultCacheBehavior:
+          TargetOriginId: alb
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad        # Managed-CachingDisabled
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3 # Managed-AllViewer
+        CacheBehaviors:
+          - PathPattern: /_next/static/*
+            TargetOriginId: alb
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6      # Managed-CachingOptimized
+          # Public file folders come straight from S3 (members-only ones go through the website).
+          - PathPattern: /media/avatars/*
+            TargetOriginId: media
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            ResponseHeadersPolicyId: !Ref MediaHeadersPolicy
+            FunctionAssociations: [{ EventType: viewer-request, FunctionARN: !GetAtt MediaPathFunction.FunctionARN }]
+          - PathPattern: /media/story-covers/*
+            TargetOriginId: media
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            ResponseHeadersPolicyId: !Ref MediaHeadersPolicy
+            FunctionAssociations: [{ EventType: viewer-request, FunctionARN: !GetAtt MediaPathFunction.FunctionARN }]
+          - PathPattern: /media/projects/*
+            TargetOriginId: media
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            ResponseHeadersPolicyId: !Ref MediaHeadersPolicy
+            FunctionAssociations: [{ EventType: viewer-request, FunctionARN: !GetAtt MediaPathFunction.FunctionARN }]
+          - PathPattern: /media/event-posters/*
+            TargetOriginId: media
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            ResponseHeadersPolicyId: !Ref MediaHeadersPolicy
+            FunctionAssociations: [{ EventType: viewer-request, FunctionARN: !GetAtt MediaPathFunction.FunctionARN }]
+          - PathPattern: /media/community-media/*
+            TargetOriginId: media
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            ResponseHeadersPolicyId: !Ref MediaHeadersPolicy
+            FunctionAssociations: [{ EventType: viewer-request, FunctionARN: !GetAtt MediaPathFunction.FunctionARN }]
+          - PathPattern: /media/showcase/*
+            TargetOriginId: media
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+            ResponseHeadersPolicyId: !Ref MediaHeadersPolicy
+            FunctionAssociations: [{ EventType: viewer-request, FunctionARN: !GetAtt MediaPathFunction.FunctionARN }]
+  MediaBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-MediaBucket" }
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: TlsOnly
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !ImportValue { "Fn::Sub": "${ProjectName}-foundation-MediaBucketArn" }
+              - !Sub ["${Arn}/*", { Arn: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-MediaBucketArn" } }]
+            Condition: { Bool: { "aws:SecureTransport": "false" } }
+          - Sid: CloudFrontReadsPublicFoldersOnly
+            Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Split
+              - ","
+              - !Sub
+                - "${Arn}/avatars/*,${Arn}/story-covers/*,${Arn}/projects/*,${Arn}/event-posters/*,${Arn}/community-media/*,${Arn}/showcase/*"
+                - Arn: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-MediaBucketArn" }
+            Condition:
+              StringEquals:
+                "AWS:SourceArn": !Sub "arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}"
+
+  # =========================================================== monitoring (CloudWatch)
+  AlarmWebErrors:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-web-5xx"
+      AlarmDescription: The website answered with more than 10 server errors in 5 minutes
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions: [{ Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }]
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!ImportValue { "Fn::Sub": "${ProjectName}-foundation-AlertTopicArn" }]
+  AlarmUnhealthy:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-web-unhealthy"
+      AlarmDescription: A website container failed its health check for 3 minutes
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - { Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }
+        - { Name: TargetGroup, Value: !GetAtt TargetGroup.TargetGroupFullName }
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!ImportValue { "Fn::Sub": "${ProjectName}-foundation-AlertTopicArn" }]
+  AlarmDbCpu:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-db-cpu"
+      AlarmDescription: Database CPU above 80% for 10 minutes
+      Namespace: AWS/RDS
+      MetricName: CPUUtilization
+      Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref Database }]
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions: [!ImportValue { "Fn::Sub": "${ProjectName}-foundation-AlertTopicArn" }]
+  AlarmDbStorage:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-db-storage"
+      AlarmDescription: Less than 2 GB of database storage left
+      Namespace: AWS/RDS
+      MetricName: FreeStorageSpace
+      Dimensions: [{ Name: DBInstanceIdentifier, Value: !Ref Database }]
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 2147483648
+      ComparisonOperator: LessThanThreshold
+      AlarmActions: [!ImportValue { "Fn::Sub": "${ProjectName}-foundation-AlertTopicArn" }]
+  AlarmReminders:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${ProjectName}-reminders-failed"
+      AlarmDescription: The hourly reminder Lambda failed
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions: [{ Name: FunctionName, Value: !Ref RemindersFunction }]
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!ImportValue { "Fn::Sub": "${ProjectName}-foundation-AlertTopicArn" }]
+  Dashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Ref ProjectName
+      DashboardBody: !Sub
+        - |
+          {"widgets":[
+            {"type":"metric","x":0,"y":0,"width":12,"height":6,"properties":{"title":"Requests through the load balancer","region":"${AWS::Region}","stat":"Sum","period":60,
+              "metrics":[["AWS/ApplicationELB","RequestCount","LoadBalancer","${Lb}"]]}},
+            {"type":"metric","x":12,"y":0,"width":12,"height":6,"properties":{"title":"Response time p90 (s)","region":"${AWS::Region}","stat":"p90","period":60,
+              "metrics":[["AWS/ApplicationELB","TargetResponseTime","LoadBalancer","${Lb}"]]}},
+            {"type":"metric","x":0,"y":6,"width":12,"height":6,"properties":{"title":"Website containers: CPU and memory %","region":"${AWS::Region}","stat":"Average","period":60,
+              "metrics":[["AWS/ECS","CPUUtilization","ClusterName","${Cluster}","ServiceName","${Svc}"],[".","MemoryUtilization",".",".",".","."]]}},
+            {"type":"metric","x":12,"y":6,"width":12,"height":6,"properties":{"title":"Healthy containers / errors","region":"${AWS::Region}","period":60,
+              "metrics":[["AWS/ApplicationELB","HealthyHostCount","TargetGroup","${Tg}","LoadBalancer","${Lb}",{"stat":"Minimum"}],
+                         ["AWS/ApplicationELB","HTTPCode_Target_5XX_Count","LoadBalancer","${Lb}",{"stat":"Sum"}]]}},
+            {"type":"metric","x":0,"y":12,"width":12,"height":6,"properties":{"title":"Database CPU % and connections","region":"${AWS::Region}","period":60,
+              "metrics":[["AWS/RDS","CPUUtilization","DBInstanceIdentifier","${Db}",{"stat":"Average"}],[".","DatabaseConnections",".",".",{"stat":"Maximum","yAxis":"right"}]]}},
+            {"type":"metric","x":12,"y":12,"width":12,"height":6,"properties":{"title":"WAF: allowed vs blocked requests","region":"${AWS::Region}","stat":"Sum","period":300,
+              "metrics":[["AWS/WAFV2","AllowedRequests","WebACL","${ProjectName}-waf","Rule","ALL"],[".","BlockedRequests",".",".",".","."]]}},
+            {"type":"metric","x":0,"y":18,"width":12,"height":6,"properties":{"title":"Reminder Lambda","region":"${AWS::Region}","stat":"Sum","period":3600,
+              "metrics":[["AWS/Lambda","Invocations","FunctionName","${Fn}"],[".","Errors",".","."]]}}
+          ]}
+        - Lb: !GetAtt LoadBalancer.LoadBalancerFullName
+          Tg: !GetAtt TargetGroup.TargetGroupFullName
+          Svc: !GetAtt WebService.Name
+          Db: !Ref Database
+          Fn: !Ref RemindersFunction
+
+Outputs:
+  SiteUrl:
+    Value: !Sub "https://${Distribution.DomainName}"
+  DistributionId:
+    Value: !Ref Distribution
+  AlbDns:
+    Value: !GetAtt LoadBalancer.DNSName
+  ClusterName:
+    Value: !Ref Cluster
+  WebServiceName:
+    Value: !GetAtt WebService.Name
+  OpsTaskDefinition:
+    Value: !Ref OpsTaskDefinition
+  AppSubnets:
+    Value: !Join [",", [!Ref AppSubnetA, !Ref AppSubnetB]]
+  OpsSecurityGroup:
+    Value: !Ref OpsSecurityGroup
+  DbEndpoint:
+    Value: !GetAtt Database.Endpoint.Address
+  DbInstance:
+    Value: !Ref Database
+  TargetGroupArn:
+    Value: !Ref TargetGroup

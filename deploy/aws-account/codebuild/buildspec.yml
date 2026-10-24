@@ -1,0 +1,50 @@
+# =============================================================================
+# AWS CodeBuild — builds everything the site needs from one commit:
+#   1. the website container image      -> Amazon ECR  tbhf-web:<tag>
+#   2. the ops (database jobs) image    -> Amazon ECR  tbhf-ops:<tag>
+#   3. the reminders Lambda package     -> S3 artifacts bucket lambda/reminders-<tag>.zip
+#   4. release/latest.json (what start.sh deploys) + imagedefinitions.json
+#      (what the CodePipeline ECS deploy step rolls out)
+# Used by two CodeBuild projects: one started by scripts/build.sh (source = a
+# zip in S3) and, optionally, one inside CodePipeline (source = GitHub).
+# =============================================================================
+version: 0.2
+
+env:
+  variables:
+    DOCKER_BUILDKIT: "1"
+
+phases:
+  pre_build:
+    commands:
+      - TAG="${SOURCE_TAG:-$(echo "${CODEBUILD_RESOLVED_SOURCE_VERSION}" | cut -c1-10)}"
+      - echo "Building version ${TAG}"
+      - REGISTRY="${WEB_REPO_URI%%/*}"
+      - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+  build:
+    commands:
+      - docker build -t "${WEB_REPO_URI}:${TAG}" tbhf-platform
+      - docker build -t "${OPS_REPO_URI}:${TAG}" -f deploy/aws-account/ops/Dockerfile .
+      - (cd deploy/aws-account/lambda/reminders
+         && npm ci --omit=dev --no-audit --no-fund
+         && curl -fsSL -o rds-ca.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+         && zip -qr "/tmp/reminders-${TAG}.zip" index.mjs package.json node_modules rds-ca.pem)
+  post_build:
+    commands:
+      - test "$CODEBUILD_BUILD_SUCCEEDING" = "1"
+      - docker push "${WEB_REPO_URI}:${TAG}"
+      - docker push "${OPS_REPO_URI}:${TAG}"
+      - aws s3 cp "/tmp/reminders-${TAG}.zip" "s3://${ARTIFACTS_BUCKET}/lambda/reminders-${TAG}.zip" --only-show-errors
+      # Keep the running Lambda function in step with the new code (if the runtime stack is up).
+      - |
+        if aws lambda get-function --function-name "$REMINDERS_FUNCTION" >/dev/null 2>&1; then
+          aws lambda update-function-code --function-name "$REMINDERS_FUNCTION" \
+            --s3-bucket "$ARTIFACTS_BUCKET" --s3-key "lambda/reminders-${TAG}.zip" >/dev/null
+        fi
+      - printf '{"tag":"%s","built":"%s"}\n' "$TAG" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > latest.json
+      - aws s3 cp latest.json "s3://${ARTIFACTS_BUCKET}/release/latest.json" --only-show-errors
+      - printf '[{"name":"web","imageUri":"%s"}]\n' "${WEB_REPO_URI}:${TAG}" > imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
