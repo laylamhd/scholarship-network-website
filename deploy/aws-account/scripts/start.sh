@@ -59,11 +59,9 @@ cfn_deploy "$RUNTIME" "$HERE_DIR/cloudformation/runtime.yaml" \
 ok "stack ready"
 
 step "4/4  Data and website"
-if [ "$FRESH" = yes ]; then
-  run_ops dbinit || die "the database import failed — read the log above"
-else
-  ok "data already in the database"
-fi
+# dbinit is safe to repeat: it does nothing when the data is already there.
+# Always running it also covers a start.sh that was interrupted before the import.
+run_ops dbinit || die "the database import failed — read the log above"
 CLUSTER=$(out "$RUNTIME" ClusterName); SERVICE=$(out "$RUNTIME" WebServiceName)
 echo "  waiting for the website containers to be healthy (2–5 minutes)…"
 aws ecs wait services-stable --cluster "$CLUSTER" --services "$SERVICE" || warn "not stable yet — check ./scripts/status.sh"

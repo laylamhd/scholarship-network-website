@@ -37,4 +37,6 @@ USER tbhf
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD wget -q -O /dev/null http://127.0.0.1:3000/login || exit 1
-CMD ["node", "server.js"]
+# Some platforms (ECS included) overwrite HOSTNAME at run time; Next.js would then
+# listen only on the task's own address and the 127.0.0.1 health check would fail.
+CMD ["sh", "-c", "HOSTNAME=0.0.0.0 exec node server.js"]

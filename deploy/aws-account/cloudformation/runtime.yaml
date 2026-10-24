@@ -513,6 +513,7 @@ Resources:
             - { Name: SITE_URL, Value: !Sub "https://${Distribution.DomainName}" }
             - { Name: MAIL_FROM, Value: !If [HasSender, !Sub "TBHF Scholars Network <${SenderEmail}>", ""] }
             - { Name: REMINDERS_MODE, Value: external }
+            - { Name: HOSTNAME, Value: "0.0.0.0" }
           Secrets:
             - Name: PGPASSWORD
               ValueFrom: !ImportValue { "Fn::Sub": "${ProjectName}-foundation-AppDbPasswordSecretArn" }
