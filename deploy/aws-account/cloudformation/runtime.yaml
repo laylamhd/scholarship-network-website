@@ -38,6 +38,12 @@ Parameters:
     Type: String
     Default: "true"
     AllowedValues: ["true", "false"]
+  DBBackupRetentionDays:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    MaxValue: 35
+    Description: RDS automated backups (the free plan allows 1 day; AWS Backup keeps daily copies for 7 days)
   WebCpu:
     Type: String
     Default: "512"
@@ -306,7 +312,7 @@ Resources:
       DBSubnetGroupName: !Ref DbSubnetGroup
       VPCSecurityGroups: [!Ref DbSecurityGroup]
       PubliclyAccessible: false
-      BackupRetentionPeriod: 7
+      BackupRetentionPeriod: !Ref DBBackupRetentionDays
       PreferredBackupWindow: "02:00-03:00"
       PreferredMaintenanceWindow: "fri:03:30-fri:04:30"
       CopyTagsToSnapshot: true

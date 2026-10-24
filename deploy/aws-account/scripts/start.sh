@@ -53,6 +53,7 @@ cfn_deploy "$RUNTIME" "$HERE_DIR/cloudformation/runtime.yaml" \
   "ProjectName=$PROJECT" "ImageTag=$TAG" "LambdaS3Key=lambda/reminders-$TAG.zip" \
   "SenderEmail=$SENDER_EMAIL" "DBSnapshotIdentifier=$SNAP" \
   "DBInstanceClass=$DB_INSTANCE_CLASS" "DBEngineVersion=$DBVER" "DBMultiAZ=$DB_MULTI_AZ" \
+  "DBBackupRetentionDays=${DB_BACKUP_DAYS:-1}" \
   "WebMinTasks=$WEB_MIN_TASKS" "WebMaxTasks=$WEB_MAX_TASKS" "ContainerInsights=$CONTAINER_INSIGHTS" \
   "CloudFrontPrefixListId=$PL" "WafRateLimit=$WAF_RATE_LIMIT" "WafRateAction=$WAF_RATE_ACTION"
 ok "stack ready"
